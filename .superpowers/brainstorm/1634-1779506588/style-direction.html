@@ -1,0 +1,231 @@
+<h2>人物绘图系统 — 风格方向重设计</h2>
+<p class="subtitle">当前问题：简单 Canvas 几何体拼出的人物（球体+圆柱体）与航海王式漫画风格差距太大</p>
+
+<div class="section">
+  <h3>🎯 目标效果参考</h3>
+  <p>用户想要的是 <strong>航海王 (One Piece)</strong> 式的漫画人物绘图 — 夸张比例、动态线条、表情丰富、有角色辨识度。不是简单的几何形状拼贴。</p>
+</div>
+
+<div class="section">
+  <h3>📸 对比：当前效果 vs 目标效果</h3>
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">❌ 当前效果（Canvas 几何体）</div>
+      <div class="mockup-body">
+        <div style="display:flex;justify-content:center;padding:20px;background:#f5f0e8">
+          <canvas id="bad-canvas" width="200" height="240"></canvas>
+        </div>
+        <p style="text-align:center;font-size:0.85rem;margin-top:0.5rem;color:#8c8c8c">
+          圆形头、椭圆眼睛、简单梯形身体<br>像乐高人偶，不像漫画人物
+        </p>
+      </div>
+    </div>
+    <div class="mockup">
+      <div class="mockup-header">✅ 目标效果（航海王式漫画人物）</div>
+      <div class="mockup-body">
+        <div style="display:flex;justify-content:center;padding:20px;background:#f5f0e8">
+          <canvas id="good-canvas" width="200" height="240"></canvas>
+        </div>
+        <p style="text-align:center;font-size:0.85rem;margin-top:0.5rem;color:#8c8c8c">
+          有锐利轮廓的下巴、漫画眼（瞳孔+高光）<br>飘逸的头发线条、肩部动态、服装褶皱
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>🔧 实现方案选择</h3>
+  <p class="subtitle">哪种方案最能产出航海王式漫画人物？</p>
+
+  <div class="options">
+    <div class="option" data-choice="svg-detail" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>SVG 精细绘制（推荐）</h3>
+        <p>用复杂 SVG 路径替代简单几何体：刀削下巴、漫画眼（3层高光）、飘逸发束、动态褶皱</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>优点</h4><ul>
+            <li>无外部依赖，纯前端</li>
+            <li>可达到高质量漫画效果</li>
+            <li>完全可控，支持任意属性组合</li>
+            <li>零 API 成本</li>
+          </ul></div>
+          <div class="cons"><h4>缺点</h4><ul>
+            <li>开发工作量大（精细路径绘制）</li>
+            <li>需要漫画人物绘画知识</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option" data-choice="ai-generation" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>AI 图像生成</h3>
+        <p>通过 AI API 生成真正的漫画人物肖像，缓存后用作角色立绘</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>优点</h4><ul>
+            <li>画质最高，真正的漫画画风</li>
+            <li>开发量最小</li>
+            <li>每次生成都是独特的</li>
+          </ul></div>
+          <div class="cons"><h4>缺点</h4><ul>
+            <li>API 成本（每次几分钱）</li>
+            <li>生成延迟（2-10秒）</li>
+            <li>表情动态更新困难（需重新生成或叠加层）</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>混合方案：AI 底图 + SVG 动态层</h3>
+        <p>AI 生成一张高品质底图，表情/装备/状态用 SVG 叠加绘制</p>
+        <div class="pros-cons">
+          <div class="pros"><h4>优点</h4><ul>
+            <li>底图质量最高</li>
+            <li>表情仍可实时动态更新</li>
+            <li>兼顾品质和交互性</li>
+          </ul></div>
+          <div class="cons"><h4>缺点</h4><ul>
+            <li>架构最复杂</li>
+            <li>仍有 API 成本</li>
+            <li>底图和叠加层可能风格不统一</li>
+          </ul></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  function drawBad(canvas) {
+    var ctx = canvas.getContext('2d');
+    var cx = 100, S = 200;
+    ctx.fillStyle = '#f5f0e8'; ctx.fillRect(0,0,200,240);
+
+    // Head (simple circle)
+    ctx.fillStyle = '#fce4d6'; ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(cx, 50, 30, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // Eyes (simple dots)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(85, 45, 8, 5, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(115, 45, 8, 5, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#2c3e50';
+    ctx.beginPath(); ctx.arc(85, 46, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(115, 46, 3, 0, Math.PI*2); ctx.fill();
+
+    // Mouth (simple line)
+    ctx.beginPath(); ctx.moveTo(95, 60); ctx.lineTo(105, 60); ctx.stroke();
+
+    // Body (trapezoid)
+    ctx.fillStyle = '#4a6741';
+    ctx.beginPath(); ctx.moveTo(70, 80); ctx.quadraticCurveTo(70, 130, 50, 160);
+    ctx.lineTo(150, 160); ctx.quadraticCurveTo(130, 130, 130, 80); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Hair (simple arc)
+    ctx.fillStyle = '#2c2c2c';
+    ctx.beginPath(); ctx.arc(cx, 42, 33, Math.PI, 0); ctx.fill(); ctx.stroke();
+  }
+
+  function drawGood(canvas) {
+    var ctx = canvas.getContext('2d');
+    var cx = 100, S = 200;
+    ctx.fillStyle = '#f5f0e8'; ctx.fillRect(0,0,200,240);
+
+    // Hair back (flowing)
+    ctx.fillStyle = '#1a1a2e'; ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(60, 20);
+    ctx.bezierCurveTo(55, 50, 50, 90, 58, 130);
+    ctx.bezierCurveTo(65, 140, 75, 135, 80, 120);
+    ctx.bezierCurveTo(75, 90, 65, 50, 65, 25);
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(140, 20);
+    ctx.bezierCurveTo(145, 50, 150, 90, 142, 130);
+    ctx.bezierCurveTo(135, 140, 125, 135, 120, 120);
+    ctx.bezierCurveTo(125, 90, 135, 50, 135, 25);
+    ctx.fill(); ctx.stroke();
+
+    // Head (angular jaw)
+    ctx.fillStyle = '#fce4d6'; ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(70, 30);
+    ctx.bezierCurveTo(65, 45, 68, 65, 72, 75);
+    ctx.lineTo(128, 75);
+    ctx.bezierCurveTo(132, 65, 135, 45, 130, 30);
+    ctx.bezierCurveTo(120, 15, 80, 15, 70, 30);
+    ctx.fill(); ctx.stroke();
+
+    // Eyes (manga style with highlights)
+    [85, 115].forEach(function(ex) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.moveTo(ex-9, 48);
+      ctx.bezierCurveTo(ex-6, 42, ex-2, 40, ex, 42);
+      ctx.bezierCurveTo(ex+2, 40, ex+6, 42, ex+9, 48);
+      ctx.bezierCurveTo(ex+6, 55, ex+2, 58, ex, 55);
+      ctx.bezierCurveTo(ex-2, 58, ex-6, 55, ex-9, 48);
+      ctx.fill(); ctx.stroke();
+      // Iris
+      ctx.fillStyle = '#6c2d82';
+      ctx.beginPath(); ctx.arc(ex, 49, 4.5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath(); ctx.arc(ex, 49, 2.5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(ex-1.5, 47, 1.2, 0, Math.PI*2); ctx.fill();
+    });
+
+    // Eyebrows (angled)
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(77, 40); ctx.lineTo(93, 37); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(123, 40); ctx.lineTo(107, 37); ctx.stroke();
+
+    // Nose (small angled line)
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(100, 52); ctx.lineTo(100, 58); ctx.stroke();
+
+    // Mouth (smirk with shadow)
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(92, 66); ctx.quadraticCurveTo(100, 70, 108, 66); ctx.stroke();
+    ctx.strokeStyle = '#c89678'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(108, 66); ctx.quadraticCurveTo(100, 72, 92, 66); ctx.stroke();
+
+    // Hair front (spiky bangs)
+    ctx.fillStyle = '#1a1a2e'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(68, 28);
+    ctx.lineTo(72, 45); ctx.lineTo(82, 38); ctx.lineTo(88, 48);
+    ctx.lineTo(98, 36); ctx.lineTo(108, 48); ctx.lineTo(118, 38);
+    ctx.lineTo(128, 45); ctx.lineTo(132, 28);
+    ctx.bezierCurveTo(120, 13, 80, 13, 68, 28);
+    ctx.fill(); ctx.stroke();
+
+    // Body (angular, manga style)
+    ctx.fillStyle = '#6b1336'; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(70, 78);
+    ctx.bezierCurveTo(60, 100, 55, 130, 50, 160);
+    ctx.lineTo(150, 160);
+    ctx.bezierCurveTo(145, 130, 140, 100, 130, 78);
+    ctx.fill(); ctx.stroke();
+
+    // Collar / shoulders detail
+    ctx.strokeStyle = '#d4a017'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(65, 82); ctx.lineTo(100, 100); ctx.lineTo(135, 82); ctx.stroke();
+  }
+
+  drawBad(document.getElementById('bad-canvas'));
+  drawGood(document.getElementById('good-canvas'));
+})();
+</script>

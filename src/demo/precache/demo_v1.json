@@ -1,0 +1,216 @@
+{
+  "version": "demo_v1",
+  "generatedAt": "2026-05-21T08:03:41.561Z",
+  "events": {
+    "char_create": {
+      "sceneText": "你从混沌中苏醒，发现自己悬浮在一片浩瀚的星云之上。脚下是碎裂的灵石铺就的虚空之路，远处有一座通天的青铜巨塔，塔身刻满上古符文，散发出吞噬万物的波动。苍穹中雷云翻涌，仿佛在等待你做出命运的抉择。一缕紫气从东方飘来，缠绕你的指尖，那是你天赋异禀的证明。",
+      "event": null,
+      "choices": [
+        {
+          "id": "c1",
+          "text": "踏入青铜塔，吞噬塔中镇压的远古妖兽精魄，走‘兽血炼体’之路",
+          "consequence": "可能获得强大肉身，但需承受狂暴反噬，中途可能失去理智"
+        },
+        {
+          "id": "c2",
+          "text": "吸收东方紫气，引动天雷淬炼灵根，走‘雷法通神’之路",
+          "consequence": "可能觉醒雷系神通，但天劫提前降临，九死一生"
+        },
+        {
+          "id": "c3",
+          "text": "潜入星云深处，寻找上古修士遗落的‘吞噬丹炉’，走‘丹道吞天’之路",
+          "consequence": "可能练成逆天丹药，但需耗费大量寿元，且材料难寻"
+        },
+        {
+          "id": "c4",
+          "text": "盘坐虚空，以自身灵识勾连散落的灵石，走‘灵脉共鸣’之路",
+          "consequence": "可能瞬间突破境界，但根基不稳，易走火入魔"
+        }
+      ],
+      "systemMessage": "叮！你的命运由每一次吞噬铸就，选择吧，修真者！",
+      "newTasks": [],
+      "newAchievements": [],
+      "achievementMessages": [],
+      "effects": {
+        "hpChange": 0,
+        "mpChange": 0,
+        "expGain": 10,
+        "wealthChange": 0,
+        "fameChange": 0,
+        "systemExpGain": 5
+      },
+      "usedFallback": false,
+      "combatResult": null,
+      "completedTasks": [],
+      "droppedItems": []
+    },
+    "turn_1": {
+      "sceneText": "你立于苍翠山巅，晨雾缭绕，灵气如丝如缕涌入体内。远处灵兽低鸣，脚下古阵微光闪烁，似有异宝潜藏。系统提示：吞噬万物，可进化自身。",
+      "event": null,
+      "choices": [
+        {
+          "id": "c1",
+          "text": "盘坐修炼，吸收周围灵气",
+          "consequence": "提升修为，但可能错过奇遇"
+        },
+        {
+          "id": "c2",
+          "text": "循灵兽低鸣声探索",
+          "consequence": "发现灵兽或陷阱，可能获得吞噬材料"
+        },
+        {
+          "id": "c3",
+          "text": "研究脚下古阵",
+          "consequence": "触发阵法，获得传承或遭遇反噬"
+        },
+        {
+          "id": "c4",
+          "text": "下山前往凡人集市",
+          "consequence": "获取情报或低阶资源，风险较低"
+        }
+      ],
+      "systemMessage": "第一回合开启，善用吞噬系统，每次选择影响属性与进化路径。",
+      "newTasks": [],
+      "newAchievements": [],
+      "achievementMessages": [],
+      "effects": {
+        "hpChange": 0,
+        "mpChange": 0,
+        "expGain": 10,
+        "wealthChange": 0,
+        "fameChange": 0,
+        "systemExpGain": 5
+      },
+      "usedFallback": false,
+      "combatResult": null,
+      "completedTasks": [],
+      "droppedItems": []
+    },
+    "turn_2": {
+      "sceneText": "你踏入宗门后山，发现一处隐秘的灵兽洞穴。洞内有一只受伤的噬金鼠，旁边散落着几块泛着微光的矿石。你的吞噬系统微微震动，似乎感应到了什么。",
+      "event": null,
+      "choices": [
+        {
+          "id": "c1",
+          "text": "尝试吞噬矿石，吸收其中的灵气",
+          "consequence": "触发吞噬进化系统，可能获得微量灵力或特殊能力"
+        },
+        {
+          "id": "c2",
+          "text": "救助噬金鼠，尝试驯服它",
+          "consequence": "获得灵兽好感，但可能消耗法力值"
+        },
+        {
+          "id": "c3",
+          "text": "搜索洞穴深处，寻找更多宝物",
+          "consequence": "可能发现稀有材料或遭遇危险"
+        },
+        {
+          "id": "c4",
+          "text": "原地打坐修炼，巩固基础",
+          "consequence": "提升修为，但错过机遇"
+        }
+      ],
+      "systemMessage": "首次吞噬进化机会！选择c1可激活系统，解锁新能力。",
+      "newTasks": [],
+      "newAchievements": [],
+      "achievementMessages": [],
+      "effects": {
+        "hpChange": 0,
+        "mpChange": 0,
+        "expGain": 10,
+        "wealthChange": 0,
+        "fameChange": 0,
+        "systemExpGain": 5
+      },
+      "usedFallback": false,
+      "combatResult": null,
+      "completedTasks": [],
+      "droppedItems": []
+    },
+    "climax_reveal": {
+      "sceneText": "你在修炼中，丹田深处突现一道血色裂缝，万千记忆碎片涌入脑海——你所谓的‘吞噬进化系统’，实则是上古魔神‘噬天’的残魂所化。他寄生在你体内，以你为炉鼎，待你突破至元婴境，便将吞噬你的神魂，借你肉身重生。此刻，那残魂在你识海中狰狞冷笑：‘终于发现了？可惜太迟了！’你的根基已与它纠缠，每吞噬一只妖兽，便为它献上一分力量。天地骤然变色，雷云翻滚，仿佛天道在警示你的命运。",
+      "event": null,
+      "choices": [
+        {
+          "id": "c1",
+          "text": "拼死反抗，以自爆丹田为代价，试图玉石俱焚",
+          "consequence": "可能重伤残魂，但自身修为尽废，生命垂危"
+        },
+        {
+          "id": "c2",
+          "text": "假装不知，暗中寻找上古禁术，图谋剥离残魂",
+          "consequence": "需冒被残魂识破的风险，且时间紧迫"
+        },
+        {
+          "id": "c3",
+          "text": "与残魂谈判，承诺助其重生，换取力量与条件",
+          "consequence": "可能堕入魔道，遭正道追杀，但短期内实力暴涨"
+        },
+        {
+          "id": "c4",
+          "text": "向宗门长老求救，暴露系统秘密，寻求庇护",
+          "consequence": "可能被当成异端囚禁或处决，但也有机会获救"
+        }
+      ],
+      "systemMessage": "警告：你已陷入生死危机！残魂觉醒，每一步都将改写命运！",
+      "newTasks": [],
+      "newAchievements": [],
+      "achievementMessages": [],
+      "effects": {
+        "hpChange": 0,
+        "mpChange": 0,
+        "expGain": 10,
+        "wealthChange": 0,
+        "fameChange": 0,
+        "systemExpGain": 5
+      },
+      "usedFallback": false,
+      "combatResult": null,
+      "completedTasks": [],
+      "droppedItems": []
+    },
+    "ending": {
+      "sceneText": "你站在上古遗迹的尽头，一枚破碎的玉简在掌心化成齑粉。风拂过荒原，远处天际裂开一道金色缝隙——那是更高位面的灵气。你已窥见一角，但还有无数世界、无数系统沉睡在未知中。",
+      "event": null,
+      "choices": [
+        {
+          "id": "c1",
+          "text": "闭关消化所得，巩固修为",
+          "consequence": "可能提升境界，但错过外界变化"
+        },
+        {
+          "id": "c2",
+          "text": "追随金色裂缝，探索新世界",
+          "consequence": "可能进入高阶位面，但风险未知"
+        },
+        {
+          "id": "c3",
+          "text": "返回宗门，交换情报与资源",
+          "consequence": "获得人脉与庇护，但暴露行踪"
+        },
+        {
+          "id": "c4",
+          "text": "激活系统隐藏功能",
+          "consequence": "可能解锁新系统，但需消耗大量能量"
+        }
+      ],
+      "systemMessage": "第一阶段冒险完结。你已触碰世界的边界，下一段旅程正等待开启。",
+      "newTasks": [],
+      "newAchievements": [],
+      "achievementMessages": [],
+      "effects": {
+        "hpChange": 0,
+        "mpChange": 0,
+        "expGain": 10,
+        "wealthChange": 0,
+        "fameChange": 0,
+        "systemExpGain": 5
+      },
+      "usedFallback": false,
+      "combatResult": null,
+      "completedTasks": [],
+      "droppedItems": []
+    }
+  }
+}

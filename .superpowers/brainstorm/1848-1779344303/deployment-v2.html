@@ -1,0 +1,120 @@
+<h2>部署与上线方案（修正版）</h2>
+<p class="subtitle">国内可用优先 — 评委和观众无需翻墙即可访问</p>
+
+<div class="section">
+  <h3>国内可用的静态托管方案</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <table style="width:100%; font-size:13px; border-collapse:collapse;">
+        <tr style="background:oklch(95% 0.01 250);">
+          <th style="padding:8px; text-align:left;">平台</th>
+          <th style="padding:8px; text-align:center;">国内访问</th>
+          <th style="padding:8px; text-align:center;">部署难度</th>
+          <th style="padding:8px; text-align:center;">免费额度</th>
+          <th style="padding:8px; text-align:center;">自定义域名</th>
+        </tr>
+        <tr>
+          <td style="padding:8px;"><b>CloudFlare Pages</b></td>
+          <td style="padding:8px; text-align:center; color:oklch(58% 0.22 140);">部分节点可用</td>
+          <td style="padding:8px; text-align:center;">⭐ 极低</td>
+          <td style="padding:8px; text-align:center;">无限</td>
+          <td style="padding:8px; text-align:center;">支持</td>
+        </tr>
+        <tr style="background:oklch(97% 0.01 250);">
+          <td style="padding:8px;"><b>腾讯云 COS + CDN</b></td>
+          <td style="padding:8px; text-align:center; color:oklch(58% 0.22 140);">✅ 完全可用</td>
+          <td style="padding:8px; text-align:center;">⭐⭐ 中</td>
+          <td style="padding:8px; text-align:center;">新用户 50GB/月</td>
+          <td style="padding:8px; text-align:center;">支持</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;"><b>GitHub Pages</b></td>
+          <td style="padding:8px; text-align:center; color:oklch(65% 0.15 40);">❌ 不稳定</td>
+          <td style="padding:8px; text-align:center;">⭐ 极低</td>
+          <td style="padding:8px; text-align:center;">无限</td>
+          <td style="padding:8px; text-align:center;">支持</td>
+        </tr>
+        <tr style="background:oklch(97% 0.01 250);">
+          <td style="padding:8px;"><b>Vercel</b></td>
+          <td style="padding:8px; text-align:center; color:oklch(65% 0.15 40);">❌ 被墙</td>
+          <td style="padding:8px; text-align:center;">⭐ 极低</td>
+          <td style="padding:8px; text-align:center;">100GB/月</td>
+          <td style="padding:8px; text-align:center;">支持</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>推荐：双线部署</h3>
+  <div class="mockup">
+    <div class="mockup-header">一条国内线 + 一条国际线，互为备份</div>
+    <div class="mockup-body">
+      <div style="display:flex; gap:12px;">
+        <div style="flex:1; background:oklch(85% 0.08 140); border-radius:8px; padding:16px;">
+          <h4 style="margin:0 0 8px 0;">🇨🇳 国内主线</h4>
+          <p style="font-size:13px; margin:4px 0;">腾讯云 COS 静态网站托管</p>
+          <p style="font-size:12px; opacity:0.7; margin:4px 0;">+ CDN 加速全国节点</p>
+          <p style="font-size:12px; opacity:0.7; margin:4px 0;">+ 自定义域名（可选备案）</p>
+          <p style="font-size:11px; color:oklch(55% 0.18 250); margin:8px 0 0 0;">比赛演示主用</p>
+        </div>
+        <div style="flex:1; background:oklch(85% 0.02 250); border-radius:8px; padding:16px;">
+          <h4 style="margin:0 0 8px 0;">🌍 国际备线</h4>
+          <p style="font-size:13px; margin:4px 0;">CloudFlare Pages</p>
+          <p style="font-size:12px; opacity:0.7; margin:4px 0;">+ 全球 CDN</p>
+          <p style="font-size:12px; opacity:0.7; margin:4px 0;">+ 自动 HTTPS</p>
+          <p style="font-size:11px; color:oklch(55% 0.18 250); margin:8px 0 0 0;">代码仓库同步 + 备用访问</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>腾讯云 COS 部署步骤（推荐）</h3>
+  <div class="mockup">
+    <div class="mockup-body">
+      <div style="font-family:monospace; font-size:13px; line-height:2.2; padding:8px;">
+        <div style="background:oklch(92% 0.02 250); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>步骤 1</b>：创建 COS 存储桶 → 开启静态网站托管
+        </div>
+        <div style="background:oklch(92% 0.02 250); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>步骤 2</b>：<code>pnpm build</code> → 上传 dist/ 到存储桶
+        </div>
+        <div style="background:oklch(92% 0.02 250); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>步骤 3</b>：绑定自定义域名 / 使用默认域名
+        </div>
+        <div style="background:oklch(92% 0.02 250); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>步骤 4</b>：配置 CDN 加速（可选但推荐，演示流畅度加分）
+        </div>
+        <div style="background:oklch(85% 0.08 140); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>✅ 完成</b>：获得国内可直接访问的 URL + 二维码
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>一键部署脚本</h3>
+  <div class="mockup">
+    <div class="mockup-header">scripts/deploy.sh — 构建并推送到国内 CDN</div>
+    <div class="mockup-body">
+      <pre style="background:oklch(20% 0.01 250); color:oklch(90% 0.01 100); padding:16px; border-radius:8px; font-size:12px;">#!/bin/bash
+# 部署到腾讯云 COS
+echo "🔨 构建生产版本..."
+pnpm build
+
+echo "📤 上传到 COS..."
+coscmd upload -r dist/ /
+
+echo "🧹 刷新 CDN 缓存..."
+coscmd purge /
+
+echo "✅ 部署完成！"
+echo "📍 访问: https://your-bucket.cos.ap-guangzhou.myqcloud.com"
+echo "📱 二维码已生成: qrcode.png"</pre>
+    </div>
+  </div>
+</div>
