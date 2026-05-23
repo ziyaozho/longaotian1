@@ -8,6 +8,36 @@ export type SceneType =
   | 'hidden_cyber'
   | 'hidden_demon';
 
+export type TalentCategory = 'combat' | 'magic' | 'body' | 'mind' | 'social' | 'craft' | 'luck';
+export type TalentRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export interface TalentEffect {
+  attrBonus?: Partial<Attributes>;
+  statBonus?: Partial<Stats>;
+  skillUnlock?: string;
+  damageType?: string;
+  conditionalBonus?: { condition: string; bonus: TalentEffect };
+}
+
+export interface Talent {
+  id: string;
+  name: string;
+  description: string;
+  category: TalentCategory;
+  worldTheme: SceneType;
+  rarity: TalentRarity;
+  effects: TalentEffect;
+  synergyTags: string[];
+}
+
+export interface SynergyLink {
+  talentA: string;
+  talentB: string;
+  commonTags: string[];
+  strength: 'weak' | 'strong' | 'legendary';
+  comboName: string;
+}
+
 export interface Attributes {
   talent: number;
   appearance: number;
@@ -124,6 +154,7 @@ export interface Player {
   completedTasks: string[];
   achievements: string[];
   history: HistoryEvent[];
+  talents: Talent[];
 }
 
 export interface SceneDefinition {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Player, Attributes, PlayerSystem, Stats, Progress, Item, Skill, Task, HistoryEvent } from '../types';
+import type { Player, Attributes, PlayerSystem, Stats, Progress, Item, Skill, Task, HistoryEvent, Talent } from '../types';
 import { getSystemById } from '../data/systems';
 import { useItemEffect } from '../data/items';
 import { getLevelFromExp } from '../config/gameConfig';
@@ -71,6 +71,7 @@ export const createInitialPlayer = (
   completedTasks: [],
   achievements: [],
   history: [],
+  talents: [],
 });
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
