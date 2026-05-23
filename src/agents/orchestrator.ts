@@ -1,4 +1,4 @@
-import type { Player, GameEvent, Choice, Task, CombatResult, Item } from '../types';
+import type { Player, GameEvent, Choice, Task, CombatResult, Item, Talent } from '../types';
 import type { AgentContext } from './types';
 import { generateTask } from './contentGenerator';
 import { checkAllAchievements } from './achievementAgent';
@@ -9,6 +9,8 @@ import { randomInt, checkProbability, randomChoice } from '../utils/random';
 import { getLevelFromExp, GAME_CONFIG } from '../config/gameConfig';
 import { savePlayer, getGlobalAchievements, saveGlobalAchievements, saveVisitedScenes, getVisitedScenes } from '../utils/storage';
 import { getProvider } from '../ai';
+import { ALL_TALENTS } from '../data/talents';
+import { selectTalentChoices } from '../utils/talentSync';
 
 export interface TurnResult {
   sceneText: string;
@@ -30,6 +32,9 @@ export interface TurnResult {
   combatResult: CombatResult | null;
   completedTasks: Task[];
   droppedItems: Item[];
+  talentChoice?: {
+    candidates: Talent[];
+  };
 }
 
 function buildContext(player: Player): AgentContext {
@@ -436,6 +441,20 @@ export const processTurn = async (player: Player): Promise<TurnResult> => {
   const globalAchievements = getGlobalAchievements();
   const achievementResult = checkAllAchievements(player, globalAchievements);
 
+  // 5级天赋触发
+  let talentChoice: TurnResult['talentChoice'] | undefined;
+  if (player.stats.level >= 5 && player.talents.length === 0) {
+    const candidates = selectTalentChoices(
+      { talent: player.attributes.talent, luck: player.attributes.luck },
+      player.progress.sceneType,
+      player.talents.map((t) => t.id),
+      ALL_TALENTS,
+    );
+    if (candidates.length > 0) {
+      talentChoice = { candidates };
+    }
+  }
+
   return {
     sceneText: sceneContent.text,
     event,
@@ -449,6 +468,7 @@ export const processTurn = async (player: Player): Promise<TurnResult> => {
     combatResult: null,
     completedTasks: [],
     droppedItems,
+    talentChoice,
   };
 };
 
@@ -466,6 +486,7 @@ export interface ChoiceResult {
   combatResult: CombatResult | null;
   droppedItems: Item[];
   sceneTransition?: string;
+  rewardedTalent?: Talent;
 }
 
 export const processChoice = (player: Player, choiceId: string, event: GameEvent | null): ChoiceResult => {
@@ -744,12 +765,23 @@ export const processChoice = (player: Player, choiceId: string, event: GameEvent
     systemExpGain: baseEffects.systemExpGain,
   };
 
+  // 处理天赋奖励
+  let rewardedTalent: Talent | undefined;
+  const selectedChoice = event?.choices.find((c) => c.id === choiceId);
+  if (selectedChoice?.rewardTalent) {
+    const talent = ALL_TALENTS.find((t) => t.id === selectedChoice.rewardTalent);
+    if (talent && player.talents.length < 3 && !player.talents.some((t) => t.id === talent.id)) {
+      rewardedTalent = talent;
+    }
+  }
+
   return {
     resultText: typeEffect.text,
     effects,
     storyFlags: [],
     combatResult: null,
     droppedItems: [],
+    rewardedTalent,
   };
 };
 
