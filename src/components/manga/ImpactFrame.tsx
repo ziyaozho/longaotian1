@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Swords, Gift, TrendingUp, MapPin, Trophy, ArrowUp, Skull, Sparkles } from 'lucide-react';
+import { Zap, Swords, Gift, TrendingUp, MapPin, Trophy, ArrowUp, Skull, Sparkles, BookOpen } from 'lucide-react';
 import MangaPanel from './MangaPanel';
 import SpeedLines from './SpeedLines';
 import Onomatopoeia from './Onomatopoeia';
@@ -11,7 +11,8 @@ export type ImpactEventType =
   | 'breakthrough'
   | 'world_transition'
   | 'achievement'
-  | 'level_up';
+  | 'level_up'
+  | 'story_result';
 
 export interface ImpactStat {
   label: string;
@@ -102,6 +103,15 @@ const THEMES: Record<ImpactEventType, {
     onomatopoeiaColor: '#27ae60',
     icon: <ArrowUp className="w-5 h-5" />,
     label: '等级提升',
+    intensity: 'low',
+  },
+  story_result: {
+    accent: '#1a1a1a',
+    accentBg: '#f5f0e8',
+    onomatopoeia: '結果',
+    onomatopoeiaColor: '#1a1a1a',
+    icon: <BookOpen className="w-5 h-5" />,
+    label: '剧情发展',
     intensity: 'low',
   },
 };

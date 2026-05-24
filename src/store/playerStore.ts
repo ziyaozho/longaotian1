@@ -1,8 +1,19 @@
 import { create } from 'zustand';
-import type { Player, Attributes, PlayerSystem, Stats, Progress, Item, Skill, Task, HistoryEvent, Talent } from '../types';
+import type {
+  Player, Attributes, PlayerSystem, Stats, Progress, Item, Skill, HistoryEvent, Talent,
+  NPCState, StoryMemory, WorldState, ExtendedSystemState, EndingProgress,
+} from '../types';
 import { getSystemById } from '../data/systems';
 import { useItemEffect } from '../data/items';
 import { getLevelFromExp } from '../config/gameConfig';
+
+/** HP/MP 随战力动态计算 */
+function calcMaxHp(physique: number, combatPower: number): number {
+  return 100 + physique * 10 + Math.floor(combatPower * 0.3);
+}
+function calcMaxMp(intelligence: number, combatPower: number): number {
+  return 50 + intelligence * 5 + Math.floor(combatPower * 0.15);
+}
 
 interface PlayerStore {
   player: Player | null;
@@ -19,8 +30,6 @@ interface PlayerStore {
   equipItem: (itemId: string) => { success: boolean; message: string };
   unequipItem: (slot: 'weapon' | 'armor' | 'accessory') => { success: boolean; message: string };
   addSkill: (skill: Skill) => void;
-  addTask: (task: Task) => void;
-  completeTask: (taskId: string) => void;
   addAchievement: (achievementId: string) => void;
   addHistory: (event: HistoryEvent) => void;
   createPlayer: (name: string, attributes: Attributes, sceneType: string, systemId: string) => Player;
@@ -28,53 +37,46 @@ interface PlayerStore {
   hasTalent: (talentId: string) => boolean;
   resetPlayer: () => void;
   addVisitedScene: (scene: string) => void;
+  // ending.md.txt 新增
+  updateStoryMemory: (memory: Partial<StoryMemory>) => void;
+  addRecentEvent: (round: number, event: string) => void;
+  addDecisionLog: (round: number, choice: string, result: string) => void;
+  updateLongTermSummary: (summary: string) => void;
+  addOrUpdateNPC: (npc: NPCState) => void;
+  updateNPCRelationship: (npcId: string, delta: number) => void;
+  setNPCLiving: (npcId: string, isAlive: boolean) => void;
+  updateNPCMemory: (npcId: string, memory: string) => void;
+  updateNPCStatus: (npcId: string, status: Partial<NPCState>) => void;
+  updateWorldState: (state: Partial<WorldState>) => void;
+  setGlobalFlag: (flag: string, value: boolean) => void;
+  initializeEnding: (endingId: string) => void;
+  updateEndingProgress: (progress: Partial<EndingProgress>) => void;
+  updateExtendedSystem: (state: Partial<ExtendedSystemState>) => void;
 }
 
 export const createInitialPlayer = (
-  name: string,
-  attributes: Attributes,
-  sceneType: string,
-  systemId: string,
-  systemName: string
-): Player => ({
-  id: `save_${Date.now()}`,
-  name,
-  createdAt: Date.now(),
-  attributes,
-  stats: {
-    level: 1,
-    exp: 0,
-    hp: 100 + attributes.physique * 10,
-    maxHp: 100 + attributes.physique * 10,
-    mp: 50 + attributes.intelligence * 5,
-    maxMp: 50 + attributes.intelligence * 5,
-    combatPower: attributes.physique * 5 + attributes.talent * 3,
-    wealth: attributes.family * 200,
-    fame: 0,
-  },
-  system: {
-    id: systemId,
-    name: systemName,
-    level: 1,
-    exp: 0,
-    features: ['basic_feature'],
-  },
-  progress: {
-    sceneType: sceneType as any,
-    sceneLevel: 1,
-    round: 1,
-    age: Math.floor(Math.random() * 5) + 16,
-    storyFlags: [],
-  },
-  inventory: [],
-  equipment: {},
-  skills: [],
-  activeTasks: [],
-  completedTasks: [],
-  achievements: [],
-  history: [],
-  talents: [],
-});
+  name: string, attributes: Attributes, sceneType: string, systemId: string, systemName: string
+): Player => {
+  const cp = attributes.physique * 50 + attributes.talent * 100;
+  return {
+    id: `save_${Date.now()}`, name, createdAt: Date.now(), attributes,
+    stats: {
+      level: 1, exp: 0,
+      hp: calcMaxHp(attributes.physique, cp), maxHp: calcMaxHp(attributes.physique, cp),
+      mp: calcMaxMp(attributes.intelligence, cp), maxMp: calcMaxMp(attributes.intelligence, cp),
+      combatPower: cp, wealth: attributes.family * 5000, fame: 0,
+    },
+    system: { id: systemId, name: systemName, level: 1, exp: 0, features: ['basic_feature'] },
+    progress: { sceneType: sceneType as any, sceneLevel: 1, round: 1, age: Math.floor(Math.random() * 5) + 16, storyFlags: [] },
+    inventory: [], equipment: {}, skills: [],
+    achievements: [], history: [], talents: [],
+    npcs: [], relationships: {},
+    storyMemory: { longTermSummary: '', recentEvents: [], decisionLog: [] },
+    worldState: { currentLocation: '新手村', timeline: '第一天·清晨', globalFlags: {} },
+    extendedSystem: { dialogueStyle: '毒舌' },
+    endingProgress: { targetEndingId: '', conditionStatus: {}, isFailed: false },
+  };
+};
 
 export const usePlayerStore = create<PlayerStore>((set) => ({
   player: null,
@@ -84,11 +86,7 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
   setPlayer: (player) => set({ player }),
 
   updateAttributes: (attrs) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, attributes: { ...state.player.attributes, ...attrs } }
-        : null,
-    })),
+    set((state) => ({ player: state.player ? { ...state.player, attributes: { ...state.player.attributes, ...attrs } } : null })),
 
   updateStats: (stats) =>
     set((state) => {
@@ -98,41 +96,25 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
         const newLevel = getLevelFromExp(newStats.exp);
         if (newLevel > newStats.level) {
           newStats.level = newLevel;
-          newStats.maxHp += 20;
-          newStats.maxMp += 10;
           newStats.combatPower += 15;
         }
+      }
+      // HP/MP 随战力动态更新
+      if (stats.combatPower !== undefined || stats.physique !== undefined || stats.intelligence !== undefined) {
+        const attr = state.player.attributes;
+        const cp = newStats.combatPower;
+        newStats.maxHp = calcMaxHp(attr.physique, cp);
+        newStats.hp = Math.min(newStats.hp, newStats.maxHp);
+        newStats.maxMp = calcMaxMp(attr.intelligence, cp);
+        newStats.mp = Math.min(newStats.mp, newStats.maxMp);
       }
       return { player: { ...state.player, stats: newStats } };
     }),
 
-  updateSystem: (system) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, system: { ...state.player.system, ...system } }
-        : null,
-    })),
-
-  updateProgress: (progress) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, progress: { ...state.player.progress, ...progress } }
-        : null,
-    })),
-
-  addItem: (item) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, inventory: [...state.player.inventory, item] }
-        : null,
-    })),
-
-  removeItem: (itemId) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, inventory: state.player.inventory.filter((i) => i.id !== itemId) }
-        : null,
-    })),
+  updateSystem: (system) => set((state) => ({ player: state.player ? { ...state.player, system: { ...state.player.system, ...system } } : null })),
+  updateProgress: (p) => set((state) => ({ player: state.player ? { ...state.player, progress: { ...state.player.progress, ...p } } : null })),
+  addItem: (item) => set((state) => ({ player: state.player ? { ...state.player, inventory: [...state.player.inventory, item] } : null })),
+  removeItem: (id) => set((state) => ({ player: state.player ? { ...state.player, inventory: state.player.inventory.filter((i) => i.id !== id) } : null })),
 
   useItem: (itemId) => {
     let result = { success: false, message: '使用失败', effects: {} as Record<string, number> };
@@ -140,57 +122,24 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       if (!state.player) return state;
       const item = state.player.inventory.find((i) => i.id === itemId);
       if (!item) return state;
-
       const effects = useItemEffect(item);
-      const newStats = { ...state.player.stats };
-      const newAttributes = { ...state.player.attributes };
-      let message = `使用了【${item.name}】`;
-
-      // 应用效果
-      for (const [key, value] of Object.entries(effects)) {
-        if (key === 'hp') {
-          newStats.hp = Math.min(newStats.maxHp, newStats.hp + value);
-          message += `，生命恢复${value}点`;
-        } else if (key === 'mp') {
-          newStats.mp = Math.min(newStats.maxMp, newStats.mp + value);
-          message += `，灵力恢复${value}点`;
-        } else if (key === 'exp') {
-          newStats.exp += value;
-          message += `，获得${value}经验`;
-        } else if (key === 'wealth') {
-          newStats.wealth = Math.max(0, newStats.wealth + value);
-          message += value > 0 ? `，获得${value}财富` : `，消耗${Math.abs(value)}财富`;
-        } else if (key === 'combatPower') {
-          newStats.combatPower += value;
-          message += `，战斗力提升${value}`;
-        } else if (['talent', 'appearance', 'intelligence', 'physique', 'family', 'luck'].includes(key)) {
-          (newAttributes as any)[key] += value;
-          message += `，${key}提升${value}`;
-        }
+      const newStats = { ...state.player.stats }, newAttrs = { ...state.player.attributes };
+      let msg = `使用了【${item.name}】`;
+      for (const [k, v] of Object.entries(effects)) {
+        if (k === 'hp') { newStats.hp = Math.min(newStats.maxHp, newStats.hp + v); msg += `，生命恢复${v}点`; }
+        else if (k === 'mp') { newStats.mp = Math.min(newStats.maxMp, newStats.mp + v); msg += `，灵力恢复${v}点`; }
+        else if (k === 'exp') { newStats.exp += v; msg += `，获得${v}经验`; }
+        else if (k === 'wealth') { newStats.wealth = Math.max(0, newStats.wealth + v); msg += v > 0 ? `，获得${v}财富` : `，消耗${Math.abs(v)}财富`; }
+        else if (k === 'combatPower') { newStats.combatPower += v; msg += `，战斗力提升${v}`; }
+        else if (['talent', 'appearance', 'intelligence', 'physique', 'family', 'luck'].includes(k)) { (newAttrs as any)[k] += v; msg += `，${k}提升${v}`; }
       }
-
-      // 检查升级
       const newLevel = getLevelFromExp(newStats.exp);
-      if (newLevel > newStats.level) {
-        newStats.level = newLevel;
-        newStats.maxHp += 20;
-        newStats.maxMp += 10;
-        newStats.combatPower += 15;
-        message += `，升级至${newLevel}级！`;
-      }
-
-      result = { success: true, message, effects };
-
-      return {
-        player: {
-          ...state.player,
-          stats: newStats,
-          attributes: newAttributes,
-          inventory: item.type === 'consumable'
-            ? state.player.inventory.filter((i) => i.id !== itemId)
-            : state.player.inventory,
-        },
-      };
+      if (newLevel > newStats.level) { newStats.level = newLevel; newStats.combatPower += 15; msg += `，升级至${newLevel}级！`; }
+      // 更新 HP/MP 上限
+      newStats.maxHp = calcMaxHp(newAttrs.physique, newStats.combatPower);
+      newStats.maxMp = calcMaxMp(newAttrs.intelligence, newStats.combatPower);
+      result = { success: true, message: msg, effects };
+      return { player: { ...state.player, stats: newStats, attributes: newAttrs, inventory: item.type === 'consumable' ? state.player.inventory.filter((i) => i.id !== itemId) : state.player.inventory } };
     });
     return result;
   },
@@ -201,63 +150,32 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
       if (!state.player) return state;
       const item = state.player.inventory.find((i) => i.id === itemId);
       if (!item) return state;
-
-      // Only weapon, armor, and skill_book can be equipped (skill_book goes to accessory slot)
       const equipType = item.type === 'skill_book' ? 'accessory' : item.type;
-      if (equipType !== 'weapon' && equipType !== 'armor' && equipType !== 'accessory') {
-        result = { success: false, message: '该物品无法装备' };
-        return state;
-      }
-
+      if (equipType !== 'weapon' && equipType !== 'armor' && equipType !== 'accessory') { result = { success: false, message: '该物品无法装备' }; return state; }
       const slot = equipType as 'weapon' | 'armor' | 'accessory';
-      const currentEquipped = state.player.equipment[slot];
-
-      // If something is already equipped, unequip it first (return to inventory)
-      let newInventory = state.player.inventory;
-      let newEquipment = { ...state.player.equipment };
-
-      if (currentEquipped) {
-        newInventory = [...newInventory, currentEquipped];
-      }
-
-      // Equip new item (remove from inventory)
-      newInventory = newInventory.filter((i) => i.id !== itemId);
-      newEquipment[slot] = item;
-
-      // Apply equipment effects to stats
-      const newStats = { ...state.player.stats };
-      const newAttributes = { ...state.player.attributes };
+      let newInv = [...state.player.inventory], newEquip = { ...state.player.equipment };
+      const cur = newEquip[slot];
+      if (cur) newInv = [...newInv, cur];
+      newInv = newInv.filter((i) => i.id !== itemId);
+      newEquip[slot] = item;
+      const newStats = { ...state.player.stats }, newAttrs = { ...state.player.attributes };
       if (item.effect) {
-        for (const [key, value] of Object.entries(item.effect)) {
-          if (key === 'hp' || key === 'maxHp') {
-            newStats.maxHp += value;
-            newStats.hp += value;
-          } else if (key === 'mp' || key === 'maxMp') {
-            newStats.maxMp += value;
-            newStats.mp += value;
-          } else if (key === 'combatPower') {
-            newStats.combatPower += value;
-          } else if (['talent', 'appearance', 'intelligence', 'physique', 'family', 'luck'].includes(key)) {
-            (newAttributes as any)[key] += value;
-          } else if (key === 'exp') {
-            newStats.exp += value;
-          } else if (key === 'wealth') {
-            newStats.wealth += value;
-          }
+        for (const [k, v] of Object.entries(item.effect)) {
+          if (k === 'maxHp') { newStats.maxHp += v; newStats.hp += v; }
+          else if (k === 'maxMp') { newStats.maxMp += v; newStats.mp += v; }
+          else if (k === 'combatPower') { newStats.combatPower += v; }
+          else if (['talent', 'appearance', 'intelligence', 'physique', 'family', 'luck'].includes(k)) { (newAttrs as any)[k] += v; }
+          else if (k === 'exp') newStats.exp += v;
+          else if (k === 'wealth') newStats.wealth += v;
         }
       }
-
+      // 更新 HP/MP
+      newStats.maxHp = calcMaxHp(newAttrs.physique, newStats.combatPower);
+      newStats.hp = Math.min(newStats.hp, newStats.maxHp);
+      newStats.maxMp = calcMaxMp(newAttrs.intelligence, newStats.combatPower);
+      newStats.mp = Math.min(newStats.mp, newStats.maxMp);
       result = { success: true, message: `装备了【${item.name}】` };
-
-      return {
-        player: {
-          ...state.player,
-          stats: newStats,
-          attributes: newAttributes,
-          inventory: newInventory,
-          equipment: newEquipment,
-        },
-      };
+      return { player: { ...state.player, stats: newStats, attributes: newAttrs, inventory: newInv, equipment: newEquip } };
     });
     return result;
   },
@@ -267,156 +185,100 @@ export const usePlayerStore = create<PlayerStore>((set) => ({
     set((state) => {
       if (!state.player) return state;
       const item = state.player.equipment[slot];
-      if (!item) {
-        result = { success: false, message: '该部位没有装备' };
-        return state;
-      }
-
-      // Remove equipment effects
-      const newStats = { ...state.player.stats };
-      const newAttributes = { ...state.player.attributes };
+      if (!item) { result = { success: false, message: '该部位没有装备' }; return state; }
+      const newStats = { ...state.player.stats }, newAttrs = { ...state.player.attributes };
       if (item.effect) {
-        for (const [key, value] of Object.entries(item.effect)) {
-          if (key === 'hp' || key === 'maxHp') {
-            newStats.maxHp = Math.max(1, newStats.maxHp - value);
-            newStats.hp = Math.min(newStats.hp, newStats.maxHp);
-          } else if (key === 'mp' || key === 'maxMp') {
-            newStats.maxMp = Math.max(1, newStats.maxMp - value);
-            newStats.mp = Math.min(newStats.mp, newStats.maxMp);
-          } else if (key === 'combatPower') {
-            newStats.combatPower = Math.max(0, newStats.combatPower - value);
-          } else if (['talent', 'appearance', 'intelligence', 'physique', 'family', 'luck'].includes(key)) {
-            (newAttributes as any)[key] = Math.max(1, (newAttributes as any)[key] - value);
-          } else if (key === 'exp') {
-            newStats.exp = Math.max(0, newStats.exp - value);
-          } else if (key === 'wealth') {
-            newStats.wealth = Math.max(0, newStats.wealth - value);
-          }
+        for (const [k, v] of Object.entries(item.effect)) {
+          if (k === 'maxHp') { newStats.maxHp = Math.max(1, newStats.maxHp - v); newStats.hp = Math.min(newStats.hp, newStats.maxHp); }
+          else if (k === 'maxMp') { newStats.maxMp = Math.max(1, newStats.maxMp - v); newStats.mp = Math.min(newStats.mp, newStats.maxMp); }
+          else if (k === 'combatPower') { newStats.combatPower = Math.max(0, newStats.combatPower - v); }
+          else if (['talent', 'appearance', 'intelligence', 'physique', 'family', 'luck'].includes(k)) { (newAttrs as any)[k] = Math.max(1, (newAttrs as any)[k] - v); }
         }
       }
-
-      const newEquipment = { ...state.player.equipment };
-      delete newEquipment[slot];
-
+      newStats.maxHp = calcMaxHp(newAttrs.physique, newStats.combatPower);
+      newStats.hp = Math.min(newStats.hp, newStats.maxHp);
+      newStats.maxMp = calcMaxMp(newAttrs.intelligence, newStats.combatPower);
+      newStats.mp = Math.min(newStats.mp, newStats.maxMp);
+      const newEquip = { ...state.player.equipment }; delete newEquip[slot];
       result = { success: true, message: `卸下了【${item.name}】` };
-
-      return {
-        player: {
-          ...state.player,
-          stats: newStats,
-          attributes: newAttributes,
-          inventory: [...state.player.inventory, item],
-          equipment: newEquipment,
-        },
-      };
+      return { player: { ...state.player, stats: newStats, attributes: newAttrs, inventory: [...state.player.inventory, item], equipment: newEquip } };
     });
     return result;
   },
 
-  addSkill: (skill) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, skills: [...state.player.skills, skill] }
-        : null,
-    })),
-
-  addTask: (task) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, activeTasks: [...state.player.activeTasks, task] }
-        : null,
-    })),
-
-  completeTask: (taskId) =>
-    set((state) => {
-      if (!state.player) return state;
-      return {
-        player: {
-          ...state.player,
-          activeTasks: state.player.activeTasks.filter((t) => t.id !== taskId),
-          completedTasks: [...state.player.completedTasks, taskId],
-        },
-      };
-    }),
-
-  addAchievement: (achievementId) =>
-    set((state) => {
-      if (!state.player || state.player.achievements.includes(achievementId)) return state;
-      return {
-        player: {
-          ...state.player,
-          achievements: [...state.player.achievements, achievementId],
-        },
-        unlockedAchievements: state.unlockedAchievements.includes(achievementId)
-          ? state.unlockedAchievements
-          : [...state.unlockedAchievements, achievementId],
-      };
-    }),
-
-  addHistory: (event) =>
-    set((state) => ({
-      player: state.player
-        ? { ...state.player, history: [...state.player.history, event] }
-        : null,
-    })),
+  addSkill: (s) => set((state) => ({ player: state.player ? { ...state.player, skills: [...state.player.skills, s] } : null })),
+  addAchievement: (id) => set((state) => {
+    if (!state.player || state.player.achievements.includes(id)) return state;
+    return { player: { ...state.player, achievements: [...state.player.achievements, id] }, unlockedAchievements: state.unlockedAchievements.includes(id) ? state.unlockedAchievements : [...state.unlockedAchievements, id] };
+  }),
+  addHistory: (e) => set((state) => ({ player: state.player ? { ...state.player, history: [...state.player.history, e] } : null })),
 
   createPlayer: (name, attributes, sceneType, systemId) => {
     const sysName = getSystemById(systemId)?.name || '基础系统';
     const player = createInitialPlayer(name, attributes, sceneType, systemId, sysName);
-    set({ player });
-    return player;
+    set({ player }); return player;
   },
 
-  addTalent: (talent) =>
-    set((state) => {
-      if (!state.player) return state;
-      if (state.player.talents.length >= 3) return state;
-      if (state.player.talents.some((t) => t.id === talent.id)) return state;
-
-      // Apply talent effects to player
-      const newAttributes = { ...state.player.attributes };
-      const newStats = { ...state.player.stats };
-      const e = talent.effects;
-
-      if (e.attrBonus) {
-        for (const [k, v] of Object.entries(e.attrBonus)) {
-          (newAttributes as Record<string, number>)[k] = Math.min(
-            10,
-            ((newAttributes as Record<string, number>)[k] || 0) + (v as number),
-          );
-        }
+  addTalent: (talent) => set((state) => {
+    if (!state.player || state.player.talents.length >= 3 || state.player.talents.some((t) => t.id === talent.id)) return state;
+    const newAttrs = { ...state.player.attributes }, newStats = { ...state.player.stats };
+    const e = talent.effects;
+    if (e.attrBonus) { for (const [k, v] of Object.entries(e.attrBonus)) (newAttrs as any)[k] = Math.min(10, ((newAttrs as any)[k] || 0) + (v as number)); }
+    if (e.statBonus) {
+      for (const [k, v] of Object.entries(e.statBonus)) (newStats as any)[k] = ((newStats as any)[k] || 0) + (v as number);
+      // 战力变化时更新 HP/MP
+      if (e.statBonus.combatPower) {
+        newStats.maxHp = calcMaxHp(newAttrs.physique, newStats.combatPower);
+        newStats.hp = newStats.maxHp;
+        newStats.maxMp = calcMaxMp(newAttrs.intelligence, newStats.combatPower);
+        newStats.mp = newStats.maxMp;
       }
-      if (e.statBonus) {
-        for (const [k, v] of Object.entries(e.statBonus)) {
-          (newStats as Record<string, number>)[k] =
-            ((newStats as Record<string, number>)[k] || 0) + (v as number);
-        }
-      }
-      if (e.statBonus?.maxHp) {
-        newStats.hp = Math.min(newStats.maxHp, newStats.hp + (e.statBonus.maxHp as number));
-      }
+    }
+    return { player: { ...state.player, talents: [...state.player.talents, talent], attributes: newAttrs, stats: newStats } };
+  }),
 
-      return {
-        player: {
-          ...state.player,
-          talents: [...state.player.talents, talent],
-          attributes: newAttributes,
-          stats: newStats,
-        },
-      };
-    }),
-
-  hasTalent: (talentId): boolean => {
-    const state = usePlayerStore.getState();
-    return state.player?.talents.some((t: Talent) => t.id === talentId) ?? false;
-  },
-
+  hasTalent: (talentId) => { const st = usePlayerStore.getState(); return st.player?.talents.some((t: Talent) => t.id === talentId) ?? false; },
   resetPlayer: () => set({ player: null }),
+  addVisitedScene: (s) => set((state) => ({ visitedScenes: state.visitedScenes.includes(s) ? state.visitedScenes : [...state.visitedScenes, s] })),
 
-  addVisitedScene: (scene) =>
-    set((state) => ({
-      visitedScenes: state.visitedScenes.includes(scene)
-        ? state.visitedScenes
-        : [...state.visitedScenes, scene],
-    })),
+  // ending.md.txt 新增方法
+  updateStoryMemory: (m) => set((state) => ({ player: state.player ? { ...state.player, storyMemory: { ...state.player.storyMemory, ...m } } : null })),
+  addRecentEvent: (round, event) => set((state) => {
+    if (!state.player) return state;
+    return { player: { ...state.player, storyMemory: { ...state.player.storyMemory, recentEvents: [...state.player.storyMemory.recentEvents, { round, event }] } } };
+  }),
+  addDecisionLog: (round, choice, result) => set((state) => {
+    if (!state.player) return state;
+    return { player: { ...state.player, storyMemory: { ...state.player.storyMemory, decisionLog: [...state.player.storyMemory.decisionLog, { round, choice, result }] } } };
+  }),
+  updateLongTermSummary: (s) => set((state) => {
+    if (!state.player) return state;
+    return { player: { ...state.player, storyMemory: { ...state.player.storyMemory, longTermSummary: s } } };
+  }),
+  addOrUpdateNPC: (npc) => set((state) => {
+    if (!state.player) return state;
+    const idx = state.player.npcs.findIndex((n) => n.npcId === npc.npcId);
+    const newNpcs = idx >= 0 ? state.player.npcs.map((n, i) => i === idx ? { ...n, ...npc } : n) : [...state.player.npcs, npc];
+    const newRel = { ...state.player.relationships };
+    if (idx < 0) newRel[npc.name] = npc.relationship;
+    return { player: { ...state.player, npcs: newNpcs, relationships: newRel } };
+  }),
+  updateNPCRelationship: (npcId, delta) => set((state) => {
+    if (!state.player) return state;
+    const npc = state.player.npcs.find((n) => n.npcId === npcId);
+    if (!npc) return state;
+    const newRel = Math.max(-100, Math.min(100, npc.relationship + delta));
+    return { player: { ...state.player, npcs: state.player.npcs.map((n) => n.npcId === npcId ? { ...n, relationship: newRel } : n), relationships: { ...state.player.relationships, [npc.name]: newRel } } };
+  }),
+  setNPCLiving: (npcId, alive) => set((state) => ({ player: state.player ? { ...state.player, npcs: state.player.npcs.map((n) => n.npcId === npcId ? { ...n, isAlive: alive } : n) } : null })),
+  updateNPCMemory: (npcId, mem) => set((state) => ({ player: state.player ? { ...state.player, npcs: state.player.npcs.map((n) => n.npcId === npcId ? { ...n, memoryOfPlayer: [...n.memoryOfPlayer.slice(-4), mem] } : n) } : null })),
+  updateNPCStatus: (npcId, st) => set((state) => ({ player: state.player ? { ...state.player, npcs: state.player.npcs.map((n) => n.npcId === npcId ? { ...n, ...st } : n) } : null })),
+  updateWorldState: (ws) => set((state) => ({ player: state.player ? { ...state.player, worldState: { ...state.player.worldState, ...ws } } : null })),
+  setGlobalFlag: (flag, val) => set((state) => {
+    if (!state.player) return state;
+    return { player: { ...state.player, worldState: { ...state.player.worldState, globalFlags: { ...state.player.worldState.globalFlags, [flag]: val } } } };
+  }),
+  initializeEnding: (endingId) => set((state) => ({ player: state.player ? { ...state.player, endingProgress: { ...state.player.endingProgress, targetEndingId: endingId } } : null })),
+  updateEndingProgress: (p) => set((state) => ({ player: state.player ? { ...state.player, endingProgress: { ...state.player.endingProgress, ...p } } : null })),
+  updateExtendedSystem: (es) => set((state) => ({ player: state.player ? { ...state.player, extendedSystem: { ...state.player.extendedSystem, ...es } } : null })),
 }));

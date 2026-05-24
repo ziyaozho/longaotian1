@@ -93,25 +93,6 @@ export interface Skill {
   effect: Record<string, number>;
 }
 
-export interface Task {
-  id: string;
-  name: string;
-  description: string;
-  type: 'main' | 'side' | 'daily' | 'hidden';
-  difficulty: number;
-  targetType: 'survive' | 'combat' | 'wealth' | 'level' | 'explore' | 'social';
-  targetValue: number;
-  targetRounds: number;
-  progress: number;
-  reward: {
-    exp?: number;
-    wealth?: number;
-    items?: string[];
-    systemExp?: number;
-  };
-  completed: boolean;
-}
-
 export interface CombatResult {
   enemyName: string;
   enemyLevel: number;
@@ -119,6 +100,7 @@ export interface CombatResult {
   enemyDamage: number;
   isVictory: boolean;
   isEscape: boolean;
+  defeatReason?: string; // 战力碾压却战败时的叙事理由
   loot: {
     exp: number;
     wealth: number;
@@ -150,11 +132,17 @@ export interface Player {
   inventory: Item[];
   equipment: Equipment;
   skills: Skill[];
-  activeTasks: Task[];
-  completedTasks: string[];
   achievements: string[];
   history: HistoryEvent[];
   talents: Talent[];
+
+  // ===== ending.md.txt 新增状态 =====
+  npcs: NPCState[];
+  relationships: Record<string, number>;
+  storyMemory: StoryMemory;
+  worldState: WorldState;
+  extendedSystem: ExtendedSystemState;
+  endingProgress: EndingProgress;
 }
 
 export interface SceneDefinition {
@@ -187,6 +175,7 @@ export interface Choice {
   consequence?: string;
   requiredAttribute?: { attr: keyof Attributes; min: number };
   rewardTalent?: string;
+  relationshipDelta?: number; // NPC邂逅时关系值变化
 }
 
 export interface GameEvent {
@@ -198,3 +187,61 @@ export interface GameEvent {
 }
 
 export type GameScreen = GameState['screen'];
+
+// ============================================================
+// ending.md.txt 核心机制 —— 状态扩展
+// ============================================================
+
+/** NPC 数据模型 (ending.md §6.1) */
+export interface NPCState {
+  npcId: string;
+  name: string;
+  role: string;
+  personality: string;
+  relationship: number; // -100 ~ 100
+  memoryOfPlayer: string[]; // 保留最近 5 条关键记忆
+  currentGoal: string;
+  currentStatus: string;
+  dialogueStyle: string;
+  isAlive: boolean;
+  firstMetRound: number;
+}
+
+/** 故事记忆 (ending.md §3.1) */
+export interface StoryMemory {
+  longTermSummary: string; // 替代冗长历史的压缩摘要
+  recentEvents: Array<{ round: number; event: string }>;
+  decisionLog: Array<{ round: number; choice: string; result: string }>;
+}
+
+/** 世界状态 (ending.md §3.1) */
+export interface WorldState {
+  currentLocation: string;
+  timeline: string;
+  globalFlags: Record<string, boolean>;
+}
+
+/** 系统扩展状态 (ending.md §3.1) */
+export interface ExtendedSystemState {
+  checkInStreak?: number;
+  nextRewardTier?: string;
+  dialogueStyle: string; // 毒舌/温柔/高冷/搞怪等
+  [key: string]: unknown;
+}
+
+/** 结局定义 (ending.md §4.1) */
+export interface EndingDefinition {
+  endingId: string;
+  name: string;
+  description: string;
+  victoryConditions: string[];
+  failConditions: string[];
+  tone: string;
+}
+
+/** 结局进度 */
+export interface EndingProgress {
+  targetEndingId: string;
+  conditionStatus: Record<string, boolean | number>;
+  isFailed: boolean;
+}

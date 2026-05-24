@@ -285,7 +285,7 @@ export const checkAchievement = (achievement: Achievement, player: import('../ty
     case 'reach_level':
       return player.stats.level >= condition.level;
     case 'complete_tasks':
-      return player.completedTasks.length >= condition.count;
+      return player.achievements.length >= condition.count; // 用已解锁成就数替代已删除的任务系统
     case 'survive_rounds':
       return player.progress.round >= condition.rounds;
     case 'attribute_threshold':

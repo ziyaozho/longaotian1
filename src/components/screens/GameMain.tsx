@@ -6,15 +6,22 @@ import type { TurnResult } from '../../agents/orchestrator';
 import { getSceneById } from '../../data/scenes';
 import { getSystemById } from '../../data/systems';
 import { getLevelFromExp } from '../../config/gameConfig';
-import type { GameEvent, Choice, Talent } from '../../types';
+import type { GameEvent, Choice, Talent, Item } from '../../types';
 import TalentSelect from './TalentSelect';
 import { calcSynergies, getSynergyStrengthColor } from '../../utils/talentSync';
 import { RARITY_LABELS } from '../../config/gameConfig';
 import { motion, AnimatePresence } from 'framer-motion';
+import { saveGame as saveGameToDB } from '../../utils/database';
 import { exportSave, importSave } from '../../utils/storage';
 import TypewriterText from '../TypewriterText';
 import FloatingNumber from '../FloatingNumber';
 import BarrageToast from '../BarrageToast';
+import LoadingScreen from '../LoadingScreen';
+import { processMemoryAfterTurn } from '../../engine/memoryCompression';
+import MerchantShop from './MerchantShop';
+import type { MerchantItem } from '../../data/artifacts';
+import { createInitialSystemHistory, recordReward, type SystemHistory } from '../../engine/systemHistory';
+import { selectEndingByAttributes } from '../../engine/endingTracker';
 import { SystemDialogue, NarrativeEvent } from '../narrative';
 import { createRhythmController } from '../../engine/rhythm';
 import { packageEvent } from '../../engine/memePackager';
@@ -29,8 +36,7 @@ import {
   triggerAlchemyDialogue,
   triggerPetDialogue,
 } from '../../services/narrativeService';
-import { saveProviderConfig, getSavedProviderConfig, type ProviderConfig } from '../../ai';
-import { Brain, AlertTriangle, Gift, Info, Terminal } from 'lucide-react';
+import { AlertTriangle, Gift, Info, Terminal } from 'lucide-react';
 import {
   Zap, Trophy,
   Scroll, MapPin, ChevronRight,
@@ -44,6 +50,56 @@ import type { CharacterState, CharacterMood } from '../character';
 import type { ImpactEventType, ImpactStat, ImpactItem } from '../manga';
 import { getAttributeHash, getCachedSpritesheet } from '../../services/spriteCache';
 
+// ending.md.txt: 命运预感模糊提示词库
+const ENDING_HINTS: Record<string, string[]> = {
+  ending_modern_king: [
+    '你隐约感到，权力的巅峰正在远方召唤...',
+    '财富与声望如潮水般涌来，但你心中有一个更大的野心...',
+    '这座城市似乎在等待一个新的主人...',
+  ],
+  ending_immortal_hermit: [
+    '你感到内心深处渴望远离纷争，寻找一片宁静之地...',
+    '某个人的身影总是在你修炼时浮现在脑海...',
+    '你发现自己在收集炼丹材料时，总会多准备一份...',
+  ],
+  ending_urban_legend: [
+    '有人开始在暗中调查你的来历...',
+    '你感觉到自己正在成为这座城市的一个"传说"...',
+    '街头的巷议中，出现了一个与你相似的神秘身影...',
+  ],
+  ending_apocalypse_savior: [
+    '幸存者们开始用期盼的眼神看着你...',
+    '你感到肩上的责任越来越重...',
+    '在这片废土上，人们需要一盏明灯...',
+  ],
+  ending_apoc_fantasy_rider: [
+    '你的血脉中似乎有什么正在觉醒...',
+    '末日预言的片段不断在你梦中浮现...',
+    '你感觉到一股来自远古的力量正在呼唤你...',
+  ],
+  ending_hidden_immortal: [
+    '天地间的灵气似乎在向你汇聚...',
+    '你隐约听到大道之音在耳边回响...',
+    '追求永生的道路上，你越走越远...',
+  ],
+  ending_cyber_god: [
+    '数字世界的边界在你面前逐渐消融...',
+    '你开始质疑肉体的局限性...',
+    '某个超级AI向你发出了一个无法拒绝的邀请...',
+  ],
+  ending_demon_overlord: [
+    '深渊中的存在对你投来了注视...',
+    '你感到体内有一股力量渴望被释放...',
+    '毁灭与新生的循环，似乎与你的命运紧密相连...',
+  ],
+};
+
+function getEndingHint(endingId: string, round: number): string {
+  const hints = ENDING_HINTS[endingId] || ['命运的齿轮正在转动...'];
+  const index = Math.min(Math.floor(round / 10), hints.length - 1);
+  return hints[index];
+}
+
 const itemTypeIcons: Record<string, React.ReactNode> = {
   consumable: <FlaskConical className="w-3 h-3" />,
   weapon: <Sword className="w-3 h-3" />,
@@ -54,7 +110,12 @@ const itemTypeIcons: Record<string, React.ReactNode> = {
 
 export default function GameMain() {
   const { setScreen, addLog, logs, systemMessage, setSystemMessage, characterMood, setCharacterMood } = useGameStore();
-  const { player, setPlayer, addAchievement, addTask, addItem, useItem, equipItem, unequipItem, addTalent } = usePlayerStore();
+  const {
+    player, setPlayer, addAchievement, addItem, useItem, equipItem, unequipItem, addTalent,
+    updateStoryMemory, addRecentEvent, addDecisionLog, updateWorldState, setGlobalFlag,
+    updateEndingProgress, updateExtendedSystem, addOrUpdateNPC, updateNPCRelationship,
+    updateNPCStatus, updateNPCMemory,
+  } = usePlayerStore();
 
   const [sceneText, setSceneText] = useState('');
   const [choices, setChoices] = useState<Choice[]>([]);
@@ -66,12 +127,17 @@ export default function GameMain() {
   const [resultText, setResultText] = useState('');
   const [showResult, setShowResult] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLoading, setShowLoading] = useState(false);
   const [importError, setImportError] = useState('');
-  const [floaters, setFloaters] = useState<{ id: number; value: number; label: string; color: string }[]>([]);
+
+  // 系统agent设计.txt: 系统历史记录
+  const systemHistoryRef = useRef<SystemHistory>(createInitialSystemHistory());
+  const [floaters, setFloaters] = useState<{ id: string; value: number; label: string; color: string }[]>([]);
   const [prevStats, setPrevStats] = useState(player?.stats);
   const [prevLevel, setPrevLevel] = useState(player?.stats.level || 1);
   const [systemLogs, setSystemLogs] = useState<Array<{ id: number; type: 'info' | 'warning' | 'reward' | 'upgrade' | 'error'; text: string; time: string }>>([]);
   const [hasSignedInToday, setHasSignedInToday] = useState(false);
+  const [aiOnline, setAiOnline] = useState(true);
   const [spriteUrl, setSpriteUrl] = useState<string | null>(null);
   const lastTurnResult = useRef<TurnResult | null>(null);
   const rhythmRef = useRef(createRhythmController());
@@ -79,6 +145,11 @@ export default function GameMain() {
 
   const [showTalentSelect, setShowTalentSelect] = useState(false);
   const [talentCandidates, setTalentCandidates] = useState<Talent[]>([]);
+
+  // 系统紧急支援弹窗
+  const [sysIntervention, setSysIntervention] = useState<GameEvent | null>(null);
+  const [showSysIntervention, setShowSysIntervention] = useState(false);
+  const [showMerchantShop, setShowMerchantShop] = useState(false);
 
   // Load spritesheet from sessionStorage, IndexedDB, or localStorage
   useEffect(() => {
@@ -181,9 +252,6 @@ export default function GameMain() {
       setPrevLevel(player.stats.level);
     }
   }, [player?.stats.level, prevLevel]);
-  const [aiConfig, setAiConfig] = useState<ProviderConfig>(getSavedProviderConfig() || { type: 'fallback' });
-  const [showAiSettings, setShowAiSettings] = useState(false);
-  const [aiError, setAiError] = useState('');
 
   const scene = player ? getSceneById(player.progress.sceneType) : null;
   const systemDef = player ? getSystemById(player.system.id) : null;
@@ -199,36 +267,72 @@ export default function GameMain() {
   };
 
   const handleSystemFeature = (feature: string) => {
+    const store = usePlayerStore.getState();
+    const currentPlayer = store.player;
+    if (!currentPlayer) return;
+
     let message = '';
     let logType: 'info' | 'reward' | 'warning' | 'upgrade' = 'info';
+    let newStats = { ...currentPlayer.stats };
+    let newSystem = { ...currentPlayer.system };
+    let newHasSignedIn = hasSignedInToday;
 
     switch (feature) {
       case 'daily_reward':
       case 'basic_feature': {
-        if (hasSignedInToday) {
+        if (newHasSignedIn) {
           message = '今日已签到，请明天再来';
           logType = 'info';
           break;
         }
-        const reward = Math.floor(Math.random() * 50) + 10;
-        const wealthReward = Math.floor(Math.random() * 30) + 5;
-        player!.stats.exp += reward;
-        player!.stats.wealth += wealthReward;
-        setHasSignedInToday(true);
-        message = `签到成功！获得${reward}经验和${wealthReward}财富`;
-        logType = 'reward';
+        // 龙傲天级签到：数值膨胀100倍 + 新手大礼包
+        const newStreak = systemHistoryRef.current.checkInStreak + 1;
+        const isFirstSignIn = systemHistoryRef.current.totalCheckIns === 0;
+
+        // 签到奖励指数级膨胀
+        const rewardWealth = isFirstSignIn
+          ? 10000000  // 首次签到：一千万！
+          : newStreak >= 7 ? 100000
+          : newStreak >= 3 ? 30000
+          : newStreak >= 2 ? 10000
+          : 5000;
+
+        const expReward = isFirstSignIn
+          ? 5000  // 首次签到直升5级
+          : Math.floor(Math.random() * 500) + newStreak * 200;
+
+        const combatBonus = isFirstSignIn ? 1000 : newStreak >= 7 ? 500 : 50;
+
+        newStats.exp += expReward;
+        newStats.wealth += rewardWealth;
+        newStats.combatPower += combatBonus;
+        newHasSignedIn = true;
+
+        systemHistoryRef.current.checkInStreak = newStreak;
+        systemHistoryRef.current.totalCheckIns++;
+
+        if (isFirstSignIn) {
+          message = `🔔叮！检测到宿主首次激活系统！新手大礼包已发放！\n💰现金：一千万（¥${rewardWealth.toLocaleString()}）\n⚔️战力：+${combatBonus}\n⭐经验：+${expReward}\n📦传说宝箱已解锁！\n\n"从今天起，你就是天选之子。全世界都将为你让路。"`;
+          logType = 'reward';
+        } else if (newStreak % 7 === 0) {
+          message = `叮！连续签到${newStreak}天！系统评定：天选之人！获得¥${rewardWealth.toLocaleString()}、战力+${combatBonus}！传说级道具已发放至背包！宿主，世界正在颤抖！`;
+          logType = 'reward';
+        } else {
+          message = `叮！第${newStreak}天签到成功！¥${rewardWealth.toLocaleString()}已到账，战力+${combatBonus}。宿主，距离称霸世界又近了一步！`;
+          logType = 'reward';
+        }
         break;
       }
       case 'crit_bonus': {
         const crit = Math.random() > 0.7;
         const reward = crit ? Math.floor(Math.random() * 200) + 100 : Math.floor(Math.random() * 50) + 20;
-        player!.stats.exp += reward;
+        newStats.exp += reward;
         message = crit ? `暴击签到！获得${reward}经验！` : `签到获得${reward}经验`;
         logType = 'reward';
         break;
       }
       case 'scan_enemy': {
-        const enemyPower = Math.floor(player!.stats.combatPower * (0.8 + Math.random() * 0.6));
+        const enemyPower = Math.floor(newStats.combatPower * (0.8 + Math.random() * 0.6));
         const weakness = Math.random() > 0.5 ? '灵力攻击' : '物理攻击';
         message = `扫描结果：附近存在战力约${enemyPower}的敌人，弱点：${weakness}`;
         logType = 'info';
@@ -240,27 +344,48 @@ export default function GameMain() {
         break;
       }
       case 'basic_lottery': {
-        const cost = 100;
-        if (player!.stats.wealth >= cost) {
-          player!.stats.wealth -= cost;
-          const roll = Math.random();
-          if (roll > 0.9) {
-            const bigReward = Math.floor(Math.random() * 500) + 200;
-            player!.stats.exp += bigReward;
-            message = `抽奖大奖！获得${bigReward}经验！`;
-          } else if (roll > 0.6) {
-            player!.stats.wealth += 200;
-            message = '抽奖获得200财富！';
-          } else {
-            const smallReward = Math.floor(Math.random() * 50) + 10;
-            player!.stats.exp += smallReward;
-            message = `抽奖获得${smallReward}经验`;
-          }
-          logType = 'reward';
+        const cost = 500;
+        if (newStats.wealth < cost) { message = '财富不足，需要500财富才能抽奖'; logType = 'warning'; break; }
+        newStats.wealth -= cost;
+        const roll = Math.random();
+        if (roll > 0.95) {
+          newStats.combatPower += 500; newStats.exp += 2000;
+          message = '🎰金色传说！战力+500，经验+2000！系统判定：欧皇本皇！';
+        } else if (roll > 0.8) {
+          newStats.combatPower += 200; newStats.exp += 500;
+          message = '🎰紫色史诗！战力+200，经验+500。不错的手气！';
+        } else if (roll > 0.5) {
+          newStats.wealth += 800; newStats.exp += 200;
+          message = '🎰蓝色稀有！回收800财富+200经验。保本小赚~';
         } else {
-          message = '财富不足，需要100财富才能抽奖';
-          logType = 'warning';
+          newStats.exp += 50;
+          message = '🎰白色普通...获得50经验。宿主，今天运气不太好呢。';
         }
+        logType = 'reward';
+        break;
+      }
+      // 吞噬：消耗背包物品转化为战力
+      case 'basic_devour': {
+        const consumables = currentPlayer?.inventory.filter((i) => i.type === 'consumable' || i.type === 'material') || [];
+        if (consumables.length === 0) { message = '背包中没有可吞噬的物品'; logType = 'warning'; break; }
+        const target = consumables[Math.floor(Math.random() * consumables.length)];
+        const powerGain = target.rarity === 'legendary' ? 500 : target.rarity === 'epic' ? 200 : target.rarity === 'rare' ? 80 : 30;
+        newStats.combatPower += powerGain;
+        // 移除物品
+        const store2 = usePlayerStore.getState();
+        if (store2.player) store2.removeItem(target.id);
+        message = `吞噬了【${target.name}】！战力永久+${powerGain}！万物皆可吞噬，这就是超级吞噬系统的力量！`;
+        logType = 'reward';
+        break;
+      }
+      // 复制：消耗mp复制背包中随机物品
+      case 'ability_steal': {
+        if (newStats.mp < 20) { message = '灵力不足，需要20点MP'; logType = 'warning'; break; }
+        newStats.mp -= 20;
+        const toCopy = currentPlayer?.inventory.filter((i) => i.rarity === 'epic' || i.rarity === 'legendary') || [];
+        if (toCopy.length === 0) { message = '没有可复制的史诗级以上物品。复制了一张空气...'; logType = 'warning'; break; }
+        message = `扫描到可复制目标：${toCopy.map((i) => i.name).join('、')}。复制功能需要AI在线支持——敬请期待！`;
+        logType = 'info';
         break;
       }
       case 'normal_dungeon': {
@@ -269,13 +394,13 @@ export default function GameMain() {
         if (success) {
           const exp = dungeonDiff * 80;
           const wealth = dungeonDiff * 40;
-          player!.stats.exp += exp;
-          player!.stats.wealth += wealth;
+          newStats.exp += exp;
+          newStats.wealth += wealth;
           message = `副本通关！获得${exp}经验和${wealth}财富`;
           logType = 'reward';
         } else {
           const damage = dungeonDiff * 15;
-          player!.stats.hp = Math.max(1, player!.stats.hp - damage);
+          newStats.hp = Math.max(1, newStats.hp - damage);
           message = `副本挑战失败，受到${damage}点伤害`;
           logType = 'warning';
         }
@@ -293,11 +418,11 @@ export default function GameMain() {
         break;
       }
       case 'basic_alchemy': {
-        if (player!.stats.mp >= 10) {
-          player!.stats.mp -= 10;
+        if (newStats.mp >= 10) {
+          newStats.mp -= 10;
           const success = Math.random() > 0.3;
           if (success) {
-            player!.stats.hp = Math.min(player!.stats.maxHp, player!.stats.hp + 40);
+            newStats.hp = Math.min(newStats.maxHp, newStats.hp + 40);
             message = '炼丹成功！炼制出小还丹，恢复40点生命';
             logType = 'reward';
           } else {
@@ -313,7 +438,7 @@ export default function GameMain() {
       case 'pet_catch': {
         const catchRoll = Math.random();
         if (catchRoll > 0.6) {
-          player!.stats.combatPower += 15;
+          newStats.combatPower += 15;
           message = '捕捉成功！灵宠加入，战斗力+15';
           logType = 'reward';
         } else {
@@ -323,8 +448,8 @@ export default function GameMain() {
         break;
       }
       case 'summon': {
-        player!.stats.mp = Math.max(0, player!.stats.mp - 15);
-        player!.stats.combatPower += 20;
+        newStats.mp = Math.max(0, newStats.mp - 15);
+        newStats.combatPower += 20;
         message = '召唤成功！战斗伙伴加入，战斗力+20';
         logType = 'reward';
         break;
@@ -333,77 +458,92 @@ export default function GameMain() {
         message = `功能【${feature}】正在开发中`;
     }
 
-    // Narrative system triggers
-    if (player) {
-      switch (feature) {
-        case 'daily_reward':
-        case 'basic_feature':
-          if (!hasSignedInToday) {
-            triggerSignInDialogue(player, '每日首次签到');
-          }
-          break;
-        case 'crit_bonus':
-          triggerSignInDialogue(player, '周签到完成');
-          break;
-        case 'basic_lottery': {
-          const rollType = message.includes('大奖')
-            ? '抽到传说奖励'
-            : message.includes('200财富')
-            ? '抽到稀有奖励'
-            : '抽到普通奖励';
-          triggerLotteryDialogue(player, rollType as any);
-          break;
-        }
-        case 'normal_dungeon': {
-          const dungeonSuccess = !message.includes('失败');
-          triggerCopyDialogue(
-            player,
-            dungeonSuccess ? '副本通关' : '进入副本',
-            { rating: dungeonSuccess ? 'S' : undefined }
-          );
-          break;
-        }
-        case 'basic_alchemy': {
-          const alchemySuccess = message.includes('成功');
-          triggerAlchemyDialogue(
-            player,
-            alchemySuccess ? '炼丹成功' : '炼丹失败',
-            { quality: alchemySuccess ? '上品' : undefined }
-          );
-          break;
-        }
-        case 'pet_catch': {
-          const petSuccess = message.includes('成功');
-          const petPotential = ['凡品', '良品', '上品', '极品', '仙品'][Math.floor(Math.random() * 5)];
-          triggerPetDialogue(
-            player,
-            petSuccess ? '获得宠物' : '宠物升级',
-            { petName: petSuccess ? '未知灵宠' : undefined, potential: petPotential }
-          );
-          break;
-        }
-        case 'summon': {
-          const summonPotential = ['凡品', '良品', '上品', '极品', '仙品'][Math.floor(Math.random() * 5)];
-          triggerPetDialogue(player, '获得宠物', { petName: '召唤兽', potential: summonPotential });
-          break;
-        }
-        case 'basic_shop':
-          triggerShopDialogue(player, '打开商店');
-          break;
-      }
+    // 处理升级
+    const newLevel = getLevelFromExp(newStats.exp);
+    if (newLevel > newStats.level) {
+      newStats.level = newLevel;
+      newStats.maxHp += 20;
+      newStats.maxMp += 10;
+      newStats.hp = newStats.maxHp;
+      newStats.combatPower += 15;
+      message += `，升级至${newLevel}级！`;
+      logType = 'upgrade';
     }
 
-    if (player) {
-      const newLevel = getLevelFromExp(player.stats.exp);
-      if (newLevel > player.stats.level) {
-        player.stats.level = newLevel;
-        player.stats.maxHp += 20;
-        player.stats.maxMp += 10;
-        player.stats.hp = player.stats.maxHp;
-        player.stats.combatPower += 15;
-        message += `，升级至${newLevel}级！`;
-        logType = 'upgrade';
+    // 更新本地状态
+    if (newHasSignedIn !== hasSignedInToday) {
+      setHasSignedInToday(newHasSignedIn);
+    }
+
+    // 构建新的 player 对象（不可变更新）
+    const updatedPlayer = {
+      ...currentPlayer,
+      stats: newStats,
+      system: newSystem,
+    };
+
+    // 触发 React 重渲染
+    store.setPlayer(updatedPlayer);
+
+    // 自动存档
+    saveGameToDB(updatedPlayer).catch(() => {});
+
+    // Narrative system triggers
+    switch (feature) {
+      case 'daily_reward':
+      case 'basic_feature':
+        if (!newHasSignedIn) {
+          triggerSignInDialogue(updatedPlayer, '每日首次签到');
+        }
+        break;
+      case 'crit_bonus':
+        triggerSignInDialogue(updatedPlayer, '周签到完成');
+        break;
+      case 'basic_lottery': {
+        const rollType = message.includes('大奖')
+          ? '抽到传说奖励'
+          : message.includes('200财富')
+          ? '抽到稀有奖励'
+          : '抽到普通奖励';
+        triggerLotteryDialogue(updatedPlayer, rollType as any);
+        break;
       }
+      case 'normal_dungeon': {
+        const dungeonSuccess = !message.includes('失败');
+        triggerCopyDialogue(
+          updatedPlayer,
+          dungeonSuccess ? '副本通关' : '进入副本',
+          { rating: dungeonSuccess ? 'S' : undefined }
+        );
+        break;
+      }
+      case 'basic_alchemy': {
+        const alchemySuccess = message.includes('成功');
+        triggerAlchemyDialogue(
+          updatedPlayer,
+          alchemySuccess ? '炼丹成功' : '炼丹失败',
+          { quality: alchemySuccess ? '上品' : undefined }
+        );
+        break;
+      }
+      case 'pet_catch': {
+        const petSuccess = message.includes('成功');
+        const petPotential = ['凡品', '良品', '上品', '极品', '仙品'][Math.floor(Math.random() * 5)];
+        triggerPetDialogue(
+          updatedPlayer,
+          petSuccess ? '获得宠物' : '宠物升级',
+          { petName: petSuccess ? '未知灵宠' : undefined, potential: petPotential }
+        );
+        break;
+      }
+      case 'summon': {
+        const summonPotential = ['凡品', '良品', '上品', '极品', '仙品'][Math.floor(Math.random() * 5)];
+        triggerPetDialogue(updatedPlayer, '获得宠物', { petName: '召唤兽', potential: summonPotential });
+        break;
+      }
+      case 'basic_shop':
+        triggerShopDialogue(updatedPlayer, '打开商店');
+        break;
     }
 
     setSystemMessage(message);
@@ -412,12 +552,17 @@ export default function GameMain() {
     setTimeout(() => setShowSystemMsg(false), 3000);
   };
 
-  // Initial turn
+  // Initial turn + 开局选定隐藏结局
   useEffect(() => {
     if (player && sceneText === '') {
+      // 确保结局已选定（SystemSelect 已选，此处兜底）
+      if (!player.endingProgress.targetEndingId) {
+        const ending = selectEndingByAttributes(player.attributes);
+        updateEndingProgress({ targetEndingId: ending.endingId });
+      }
       startNewTurn();
     }
-  }, []);
+  }, [player]);
 
   const handleExportSave = () => {
     if (!player) return;
@@ -443,6 +588,7 @@ export default function GameMain() {
       const imported = importSave(data);
       if (imported) {
         setPlayer(imported);
+        saveGameToDB(imported).catch(() => {});
         setSystemMessage('存档导入成功！');
         setShowSystemMsg(true);
         setTimeout(() => setShowSystemMsg(false), 3000);
@@ -457,13 +603,14 @@ export default function GameMain() {
 
   const addSystemLog = useCallback((type: 'info' | 'warning' | 'reward' | 'upgrade' | 'error', text: string) => {
     const time = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    setSystemLogs((prev) => [...prev.slice(-49), { id: Date.now(), type, text, time }]);
+    setSystemLogs((prev) => [...prev.slice(-49), { id: crypto.randomUUID(), type, text, time }]);
   }, []);
 
   const startNewTurn = useCallback(async () => {
     const currentPlayer = usePlayerStore.getState().player;
     if (!currentPlayer) return;
     setIsProcessing(true);
+    setShowLoading(true);
 
     try {
       const turnResult = await processTurn(currentPlayer);
@@ -535,17 +682,12 @@ export default function GameMain() {
       }
 
       if (turnResult.usedFallback) {
+        setAiOnline(false);
         addSystemLog('warning', 'AI 服务暂不可用，已切换至本地模板');
       }
 
-      for (const task of turnResult.newTasks) {
-        addTask(task);
-      }
 
       if (turnResult.droppedItems.length > 0) {
-        for (const item of turnResult.droppedItems) {
-          addItem(item);
-        }
         const itemNames = turnResult.droppedItems.map(i => i.name).join('、');
         addSystemLog('reward', `获得道具：${itemNames}`);
       }
@@ -563,6 +705,98 @@ export default function GameMain() {
         setShowTalentSelect(true);
       }
 
+      // 系统紧急支援弹窗（不影响主线剧情）
+      if (turnResult.systemIntervention) {
+        setSysIntervention(turnResult.systemIntervention);
+        setShowSysIntervention(true);
+      }
+
+      // ending.md.txt: 更新世界状态
+      if (turnResult.worldStateUpdate) {
+        updateWorldState({ timeline: turnResult.worldStateUpdate.newTimeline });
+        for (const flag of turnResult.worldStateUpdate.newFlags) {
+          setGlobalFlag(flag, true);
+        }
+      }
+
+      // ending.md.txt: 提取关键事件并触发记忆压缩（合并为一步，避免竞态）
+      const keyEvent = turnResult.event
+        ? turnResult.event.description.substring(0, 80)
+        : turnResult.sceneText.substring(0, 80);
+
+      processMemoryAfterTurn(
+        currentPlayer.storyMemory,
+        currentPlayer.progress.round,
+        keyEvent
+      ).then((newMemory) => {
+        updateStoryMemory(newMemory);
+      }).catch(() => {
+        // 压缩失败时至少保留原始事件
+        addRecentEvent(currentPlayer.progress.round, keyEvent);
+      });
+
+      // ending.md.txt: NPC 邂逅持久化
+      if (turnResult.npcEncounter) {
+        addOrUpdateNPC(turnResult.npcEncounter.npc);
+        if (turnResult.npcEncounter.isNew) {
+          addSystemLog('info', `邂逅新人物：${turnResult.npcEncounter.npc.name}`);
+        }
+      }
+
+      // 系统agent设计.txt: 处理系统智能体结果
+      if (turnResult.systemAgentResult) {
+        const sa = turnResult.systemAgentResult;
+        // 显示系统对话
+        if (sa.systemDialogue) {
+          setSystemMessage(sa.systemDialogue);
+          setShowSystemMsg(true);
+          setTimeout(() => setShowSystemMsg(false), 4000);
+          addSystemLog('reward', sa.systemDialogue);
+        }
+        // 更新历史
+        for (const reward of sa.rewards) {
+          if (reward.type === 'wealth' && reward.amount) {
+            addSystemLog('reward', `获得¥${reward.amount}`);
+          }
+          if (reward.type === 'artifact' && reward.name) {
+            systemHistoryRef.current = recordReward(
+              systemHistoryRef.current,
+              reward.name,
+              reward.itemId || '',
+              0
+            );
+          }
+        }
+        // 更新签到天数
+        const streakMatch = sa.systemNotes.match(/check_in_streak:(\d+)/);
+        if (streakMatch) {
+          systemHistoryRef.current.checkInStreak = parseInt(streakMatch[1], 10);
+        }
+        // 新任务
+      }
+
+      // ending.md.txt: NPC 自主行动 —— 传闻 + 状态持久化
+      if (turnResult.npcAutonomyActions && turnResult.npcAutonomyActions.length > 0) {
+        for (const action of turnResult.npcAutonomyActions) {
+          addSystemLog('info', `[传闻] ${action.worldHint}`);
+          if (action.newStatus) {
+            updateNPCStatus(action.npcId, { currentStatus: action.newStatus });
+          }
+          if (action.newGoal) {
+            updateNPCStatus(action.npcId, { currentGoal: action.newGoal });
+          }
+          if (action.newMemory) {
+            updateNPCMemory(action.npcId, action.newMemory);
+          }
+        }
+      }
+
+      // ending.md.txt: 结局触发检测
+      if (turnResult.endingTriggered?.triggered) {
+        const endingType = turnResult.endingTriggered.isVictory ? '达成' : '失败';
+        addSystemLog('upgrade', `隐藏结局${endingType}！`);
+      }
+
       addLog(`[第${currentPlayer.progress.round}回合] ${turnResult.sceneText.substring(0, 60)}...`);
       if (turnResult.event) {
         addLog(`[事件] ${turnResult.event.description.substring(0, 60)}...`);
@@ -572,8 +806,9 @@ export default function GameMain() {
       addSystemLog('error', '回合处理失败，请刷新页面重试');
     } finally {
       setIsProcessing(false);
+      setShowLoading(false);
     }
-  }, [addLog, setSystemMessage, addTask, addItem, addAchievement, addSystemLog]);
+  }, [addLog, setSystemMessage, addItem, addAchievement, addSystemLog]);
 
   const handleTalentSelect = useCallback((talent: Talent) => {
     addTalent(talent);
@@ -583,6 +818,57 @@ export default function GameMain() {
     addSystemLog('upgrade', `觉醒天赋: ${talent.name}`);
     setTimeout(() => setShowSystemMsg(false), 3000);
   }, [addTalent, setSystemMessage, addSystemLog]);
+
+  // 商人商城购买（消耗 wealth 金钱）—— 使用 getState 避免闭包过期
+  const handleMerchantBuy = useCallback((item: MerchantItem) => {
+    const store = usePlayerStore.getState();
+    const currentPlayer = store.player;
+    if (!currentPlayer || currentPlayer.stats.wealth < item.price) return;
+
+    const newItem: Item = {
+      id: `${item.id}_${Date.now()}`,
+      name: item.name,
+      description: item.description,
+      rarity: item.rarity,
+      type: item.type === 'consumable' ? 'consumable' : item.type === 'equipment' ? 'weapon' : 'material',
+      effect: item.effect,
+    };
+
+    store.setPlayer({
+      ...currentPlayer,
+      stats: { ...currentPlayer.stats, wealth: currentPlayer.stats.wealth - item.price },
+      inventory: [...currentPlayer.inventory, newItem],
+    });
+
+    addSystemLog('reward', `购买【${item.name}】，花费${item.price}金钱`);
+    setSystemMessage(`成功购买【${item.name}】！`);
+    setShowSystemMsg(true);
+    setTimeout(() => setShowSystemMsg(false), 3000);
+  }, [addSystemLog, setSystemMessage]);
+
+  const handleSysIntervention = useCallback(async (choiceId: string) => {
+    if (!player || !sysIntervention || isProcessing) return;
+    setIsProcessing(true);
+
+    const turnResult = lastTurnResult.current;
+    if (!turnResult) { setIsProcessing(false); return; }
+
+    const choiceResult = processChoice(player, choiceId, sysIntervention, '', sysIntervention.choices);
+    const updated = updatePlayerAfterTurn(player, turnResult, choiceResult, choiceId);
+    setPlayer(updated);
+    saveGameToDB(updated).catch(() => {});
+
+    if (choiceResult.resultText) {
+      setSystemMessage(choiceResult.resultText);
+      setShowSystemMsg(true);
+      setTimeout(() => setShowSystemMsg(false), 4000);
+      addSystemLog('info', choiceResult.resultText);
+    }
+
+    setShowSysIntervention(false);
+    setSysIntervention(null);
+    setIsProcessing(false);
+  }, [player, sysIntervention, isProcessing, addSystemLog]);
 
   const handleImpactContinue = useCallback(() => {
     setImpactEvent(null);
@@ -596,14 +882,11 @@ export default function GameMain() {
     if (!player || isProcessing) return;
     setIsProcessing(true);
 
-    const choiceResult = processChoice(player, choiceId, currentEvent);
-
     const turnResult = lastTurnResult.current || {
       sceneText: '',
       event: null,
       choices: [],
       systemMessage: null,
-      newTasks: [],
       newAchievements: [],
       achievementMessages: [],
       effects: {
@@ -616,24 +899,36 @@ export default function GameMain() {
       },
       usedFallback: false,
       combatResult: null,
-      completedTasks: [],
       droppedItems: [],
     };
+
+    const choiceResult = processChoice(player, choiceId, currentEvent, turnResult.sceneText, turnResult.choices);
+
+    // ending.md.txt: 记录决策日志
+    const selectedChoice = currentEvent
+      ? currentEvent.choices.find((c) => c.id === choiceId)
+      : turnResult.choices.find((c) => c.id === choiceId);
+    if (selectedChoice) {
+      addDecisionLog(
+        player.progress.round,
+        selectedChoice.text,
+        choiceResult.resultText || selectedChoice.consequence || '无'
+      );
+    }
 
     const updated = updatePlayerAfterTurn(player, turnResult, choiceResult, choiceId);
 
     const statDiffs: ImpactStat[] = [];
     if (prevStats) {
       const newFloaters: typeof floaters = [];
-      let id = Date.now();
       const hpDiff = updated.stats.hp - prevStats.hp;
-      if (hpDiff !== 0) { newFloaters.push({ id: id++, value: hpDiff, label: 'HP', color: hpDiff > 0 ? '#27ae60' : '#c0392b' }); statDiffs.push({ label: 'HP', value: hpDiff }); }
+      if (hpDiff !== 0) { newFloaters.push({ id: crypto.randomUUID(), value: hpDiff, label: 'HP', color: hpDiff > 0 ? '#27ae60' : '#c0392b' }); statDiffs.push({ label: 'HP', value: hpDiff }); }
       const mpDiff = updated.stats.mp - prevStats.mp;
-      if (mpDiff !== 0) { newFloaters.push({ id: id++, value: mpDiff, label: 'MP', color: '#2980b9' }); statDiffs.push({ label: 'MP', value: mpDiff }); }
+      if (mpDiff !== 0) { newFloaters.push({ id: crypto.randomUUID(), value: mpDiff, label: 'MP', color: '#2980b9' }); statDiffs.push({ label: 'MP', value: mpDiff }); }
       const expDiff = updated.stats.exp - prevStats.exp;
-      if (expDiff > 0) { newFloaters.push({ id: id++, value: expDiff, label: 'EXP', color: '#d4a017' }); statDiffs.push({ label: 'EXP', value: expDiff }); }
+      if (expDiff > 0) { newFloaters.push({ id: crypto.randomUUID(), value: expDiff, label: 'EXP', color: '#d4a017' }); statDiffs.push({ label: 'EXP', value: expDiff }); }
       const wealthDiff = updated.stats.wealth - prevStats.wealth;
-      if (wealthDiff !== 0) { newFloaters.push({ id: id++, value: wealthDiff, label: '财富', color: wealthDiff > 0 ? '#27ae60' : '#c0392b' }); statDiffs.push({ label: '财富', value: wealthDiff }); }
+      if (wealthDiff !== 0) { newFloaters.push({ id: crypto.randomUUID(), value: wealthDiff, label: '财富', color: wealthDiff > 0 ? '#27ae60' : '#c0392b' }); statDiffs.push({ label: '财富', value: wealthDiff }); }
       if (newFloaters.length > 0) {
         setFloaters((prev) => [...prev, ...newFloaters]);
       }
@@ -641,6 +936,18 @@ export default function GameMain() {
     setPrevStats(updated.stats);
     setPrevLevel(updated.stats.level);
     setPlayer(updated);
+
+    // 自动存档到 IndexedDB
+    saveGameToDB(updated).catch(() => {});
+
+    // ending.md.txt: 更新 NPC 关系值
+    if (choiceResult.npcRelationshipDelta !== undefined && choiceResult.npcName) {
+      const npc = player.npcs.find((n) => n.name === choiceResult.npcName);
+      if (npc) {
+        updateNPCRelationship(npc.npcId, choiceResult.npcRelationshipDelta);
+        addSystemLog('info', `${choiceResult.npcName}的关系值${choiceResult.npcRelationshipDelta > 0 ? '+' : ''}${choiceResult.npcRelationshipDelta}`);
+      }
+    }
 
     // Update character mood based on choice result
     let newExpression: CharacterMood['expression'] = 'neutral';
@@ -729,15 +1036,13 @@ export default function GameMain() {
         items: impactItems,
       });
     } else {
-      setResultText(choiceResult.resultText);
-      setShowResult(true);
-
-      setTimeout(() => {
-        setShowResult(false);
-        setShowEvent(false);
-        setCurrentEvent(null);
-        startNewTurn();
-      }, 1500);
+      setImpactEvent({
+        eventType: 'story_result',
+        title: '关卡总结',
+        description: choiceResult.resultText || '事情就这样发生了...',
+        stats: statDiffs,
+        items: impactItems,
+      });
     }
   };
 
@@ -780,6 +1085,9 @@ export default function GameMain() {
     <div className="h-screen flex flex-col paper-bg overflow-hidden">
       <SpeedLines active={currentEvent !== null} intensity="low" />
 
+      {/* ending.md.txt: AI 推理过场动画 */}
+      <LoadingScreen visible={showLoading} />
+
       {/* Top bar */}
       <MangaPanel className="px-4 py-3 !shadow-none !border-t-0 !border-x-0">
         <div className="max-w-6xl mx-auto flex items-center justify-between flex-wrap gap-3">
@@ -804,6 +1112,13 @@ export default function GameMain() {
                 ¥{Math.floor(player.stats.wealth)}
               </span>
               <span className="manga-badge">战力 {Math.floor(player.stats.combatPower)}</span>
+              <span
+                className="manga-badge text-xs"
+                style={{ background: aiOnline ? '#2d8a4e' : '#8a2d2d', color: '#fff', cursor: 'help' }}
+                title={aiOnline ? 'AI 内容生成正常' : 'AI 离线，使用本地模板'}
+              >
+                {aiOnline ? 'AI' : '本地'}
+              </span>
               <button
                 onClick={() => setShowSettings(!showSettings)}
                 className="p-2 hover:bg-[#f0ebe0] transition-colors"
@@ -926,6 +1241,93 @@ export default function GameMain() {
               </div>
             </MangaPanel>
           )}
+
+          {/* ending.md.txt: 世界状态 */}
+          <MangaPanel className="!p-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-1 text-game-text-muted">
+                <MapPin className="w-3 h-3" /> {player.worldState.currentLocation}
+              </span>
+              <span className="text-game-text-muted">{player.worldState.timeline}</span>
+            </div>
+            {Object.keys(player.worldState.globalFlags).length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {Object.entries(player.worldState.globalFlags)
+                  .filter(([, v]) => v)
+                  .slice(0, 3)
+                  .map(([flag]) => (
+                    <span key={flag} className="text-[10px] px-1.5 py-0.5 bg-gray-100 ink-border">
+                      {flag}
+                    </span>
+                  ))}
+              </div>
+            )}
+          </MangaPanel>
+
+          {/* ending.md.txt: 已知 NPC */}
+          {player.npcs.length > 0 && (
+            <MangaPanel className="!p-3">
+              <h3 className="font-bold mb-2 manga-title text-sm">已知人物 ({player.npcs.length})</h3>
+              <div className="space-y-1.5">
+                {player.npcs
+                  .filter((n) => n.isAlive)
+                  .map((npc) => (
+                    <div key={npc.npcId} className="ink-border p-1.5 bg-white">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold">{npc.name}</span>
+                        <span
+                          className="text-[10px] px-1.5 py-0.5 rounded text-white"
+                          style={{
+                            backgroundColor:
+                              npc.relationship >= 80 ? '#e74c3c'
+                              : npc.relationship >= 50 ? '#f39c12'
+                              : npc.relationship >= 10 ? '#27ae60'
+                              : npc.relationship >= -10 ? '#7f8c8d'
+                              : npc.relationship >= -50 ? '#2980b9'
+                              : '#8e44ad',
+                          }}
+                        >
+                          {npc.relationship >= 80 ? '羁绊'
+                            : npc.relationship >= 50 ? '亲近'
+                            : npc.relationship >= 10 ? '友善'
+                            : npc.relationship >= -10 ? '中立'
+                            : npc.relationship >= -50 ? '冷淡'
+                            : '敌对'}{' '}
+                          {npc.relationship}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-game-text-muted mt-0.5">{npc.role}</p>
+                      <p className="text-[10px] text-game-text-muted">{npc.currentStatus}</p>
+                    </div>
+                  ))}
+              </div>
+            </MangaPanel>
+          )}
+
+          {/* ending.md.txt: 近期事件 */}
+          {player.storyMemory.recentEvents.length > 0 && (
+            <MangaPanel className="!p-3">
+              <h3 className="font-bold mb-2 manga-title text-sm">近期事件</h3>
+              <div className="space-y-1">
+                {player.storyMemory.recentEvents.slice(-3).map((e) => (
+                  <div key={e.round + e.event.slice(0, 12)} className="text-[10px] text-gray-600 flex items-center gap-1">
+                    <span className="text-gray-400">第{e.round}回合</span>
+                    <span className="truncate">{e.event}</span>
+                  </div>
+                ))}
+              </div>
+            </MangaPanel>
+          )}
+
+          {/* ending.md.txt: 命运预感（结局线索） */}
+          {player.endingProgress.targetEndingId && (
+            <MangaPanel className="!p-3" style={{ borderColor: '#8e44ad' }}>
+              <h3 className="font-bold text-sm" style={{ color: '#8e44ad' }}>命运预感</h3>
+              <p className="text-xs text-gray-600 mt-1 italic">
+                {getEndingHint(player.endingProgress.targetEndingId, player.progress.round)}
+              </p>
+            </MangaPanel>
+          )}
         </div>
 
         {/* Center column - Main game */}
@@ -962,86 +1364,12 @@ export default function GameMain() {
                       className="hidden"
                     />
                   </label>
-                  <button
-                    onClick={() => setShowAiSettings(!showAiSettings)}
-                    className="manga-btn-outline flex items-center gap-2 text-sm"
-                  >
-                    <Brain className="w-4 h-4" />
-                    AI 设置
-                  </button>
+
                 </div>
                 {importError && (
                   <p className="text-sm mt-2" style={{ color: '#c0392b' }}>{importError}</p>
                 )}
 
-                <AnimatePresence>
-                  {showAiSettings && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="border-t-3 mt-4 pt-4 space-y-3"
-                      style={{ borderColor: '#1a1a1a' }}
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <Brain className="w-4 h-4" />
-                        <span className="font-medium">AI 内容生成</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => setAiConfig({ ...aiConfig, type: 'deepseek' })}
-                          className={`px-3 py-1.5 text-sm transition-colors ${
-                            aiConfig.type === 'deepseek'
-                              ? 'manga-btn text-xs'
-                              : 'manga-btn-outline text-xs'
-                          }`}
-                        >
-                          DeepSeek AI
-                        </button>
-                        <button
-                          onClick={() => setAiConfig({ ...aiConfig, type: 'fallback' })}
-                          className={`px-3 py-1.5 text-sm transition-colors ${
-                            aiConfig.type === 'fallback'
-                              ? 'manga-btn text-xs'
-                              : 'manga-btn-outline text-xs'
-                          }`}
-                        >
-                          本地模板
-                        </button>
-                      </div>
-                      {aiConfig.type === 'deepseek' && (
-                        <div className="space-y-2">
-                          <input
-                            type="password"
-                            placeholder="DeepSeek API Key (sk-...)"
-                            value={aiConfig.apiKey || ''}
-                            onChange={(e) => setAiConfig({ ...aiConfig, apiKey: e.target.value })}
-                            className="manga-input w-full text-sm"
-                          />
-                        </div>
-                      )}
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => {
-                            try {
-                              saveProviderConfig(aiConfig);
-                              setAiError('');
-                              setSystemMessage('AI 配置已保存！');
-                              setShowSystemMsg(true);
-                              setTimeout(() => setShowSystemMsg(false), 3000);
-                            } catch (e) {
-                              setAiError('保存失败');
-                            }
-                          }}
-                          className="manga-btn text-sm px-4 py-1.5"
-                        >
-                          保存配置
-                        </button>
-                      </div>
-                      {aiError && <p className="text-xs" style={{ color: '#c0392b' }}>{aiError}</p>}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
 
                 <div className="border-t-3 mt-4 pt-4" style={{ borderColor: '#1a1a1a' }}>
                   <span className="text-sm font-bold">特效强度</span>
@@ -1090,30 +1418,7 @@ export default function GameMain() {
               </motion.div>
             </AnimatePresence>
 
-            <AnimatePresence>
-              {showEvent && currentEvent && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  className="ink-border p-4 mb-4 bg-white"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Sparkles className="w-4 h-4" style={{ color: '#1a1a1a' }} />
-                    <span className="font-bold">{currentEvent.title}</span>
-                  </div>
-                  <p className="text-game-text-muted">{currentEvent.description}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {showEvent && currentEvent && (
-                <div className="absolute top-4 right-8 z-50 pointer-events-none">
-                  <Onomatopoeia text="ドン！" variant="impact" />
-                </div>
-              )}
-            </AnimatePresence>
+            {/* 事件信息已整合到 sceneText 中，不再单独显示事件框 */}
 
             <AnimatePresence>
               {showResult && (
@@ -1129,41 +1434,11 @@ export default function GameMain() {
               )}
             </AnimatePresence>
 
-            {/* Choices with character portrait */}
+            {/* Choices */}
             {!showResult && (
               <>
-                {/* Mobile portrait above choices */}
-                {portraitState && (
-                  <motion.div
-                    className="md:hidden flex justify-center w-full mb-3"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                  >
-                    <CharacterPortrait
-                      state={portraitState}
-                      spritesheetUrl={spriteUrl}
-                      size={140}
-                    />
-                  </motion.div>
-                )}
-                <div className="flex gap-4 items-start">
-                  {/* Desktop portrait beside choices */}
-                  {portraitState && (
-                    <motion.div
-                      className="flex-shrink-0 hidden md:block"
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.05 }}
-                    >
-                      <CharacterPortrait
-                        state={portraitState}
-                        spritesheetUrl={spriteUrl}
-                        size={180}
-                      />
-                    </motion.div>
-                  )}
-                  <div className="space-y-2 flex-1">
-                    {choices.map((choice, index) => (
+                <div className="space-y-2">
+                  {choices.map((choice, index) => (
                       <motion.button
                         key={choice.id}
                         initial={{ opacity: 0, x: -20 }}
@@ -1183,7 +1458,6 @@ export default function GameMain() {
                         <ChevronRight className="w-4 h-4 opacity-50 flex-shrink-0" />
                       </motion.button>
                     ))}
-                  </div>
                 </div>
               </>
             )}
@@ -1263,7 +1537,7 @@ export default function GameMain() {
               <h3 className="font-bold manga-title">{systemDef?.name}</h3>
             </div>
             <div className="text-sm text-game-text-muted mb-2">
-              等级: {player.system.level} / {systemDef?.maxLevel || 10}
+              等级: {player.system.level} / {systemDef?.maxLevel || 10} · 签到第{systemHistoryRef.current.checkInStreak}天
             </div>
             <HalftoneBar
               value={player.system.exp}
@@ -1341,45 +1615,6 @@ export default function GameMain() {
             </div>
           </MangaPanel>
 
-          <MangaPanel>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold flex items-center gap-2 manga-title">
-                <Scroll className="w-4 h-4" style={{ color: '#1a1a1a' }} />
-                任务列表
-              </h3>
-              <span className="text-xs text-game-text-muted">{player.activeTasks.length} 进行中</span>
-            </div>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {player.activeTasks.length === 0 ? (
-                <div className="text-sm text-game-text-muted">暂无任务</div>
-              ) : (
-                player.activeTasks.map((task) => (
-                  <div key={task.id} className="ink-border bg-white p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium" style={{ color: '#1a1a1a' }}>{task.name}</span>
-                      <span className="manga-badge text-xs">
-                        {task.type === 'main' ? '主线' : task.type === 'side' ? '支线' : '日常'}
-                      </span>
-                    </div>
-                    <p className="text-xs text-game-text-muted mb-2">{task.description}</p>
-                    <div className="mb-2">
-                      <HalftoneBar
-                        value={task.progress}
-                        max={task.targetRounds}
-                        label="进度"
-                        color="ink"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span style={{ color: '#d4a017' }}>EXP +{task.reward.exp}</span>
-                      <span style={{ color: '#27ae60' }}>财富 +{task.reward.wealth}</span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </MangaPanel>
-
           <AnimatePresence>
             {showAchievements.length > 0 && (
               <motion.div
@@ -1418,21 +1653,64 @@ export default function GameMain() {
         ))}
       </AnimatePresence>
 
+      {/* 系统提示弹窗 —— 网文沉浸式通知 */}
       <AnimatePresence>
         {showSystemMsg && systemMessage && (
           <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 max-w-md"
+            initial={{ opacity: 0, scale: 0.8, y: 30 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+            className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 w-[380px] max-w-[92vw]"
           >
-            <MangaPanel className="ink-shadow">
-              <div className="flex items-center gap-2 font-medium mb-1" style={{ color: '#1a1a1a' }}>
-                <Sparkles className="w-4 h-4" />
-                <span>系统提示</span>
+            {/* 扫描线 */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-lg">
+              <motion.div
+                className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-300/60 to-transparent"
+                animate={{ top: ['0%', '100%', '0%'] }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+              />
+            </div>
+
+            {/* 通知体 */}
+            <div className="relative rounded-lg overflow-hidden"
+              style={{
+                background: 'linear-gradient(135deg, rgba(10,20,40,0.97), rgba(15,30,60,0.97))',
+                border: '1px solid rgba(0,200,255,0.3)',
+                boxShadow: '0 0 30px rgba(0,150,255,0.2), inset 0 0 30px rgba(0,100,200,0.05)',
+              }}
+            >
+              {/* 顶栏 */}
+              <div className="flex items-center gap-2 px-4 py-2.5"
+                style={{
+                  background: 'linear-gradient(90deg, rgba(0,150,255,0.15), transparent)',
+                  borderBottom: '1px solid rgba(0,200,255,0.15)',
+                }}
+              >
+                <motion.div
+                  animate={{ rotate: [0, 360] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                >
+                  <Sparkles className="w-4 h-4" style={{ color: '#0cf' }} />
+                </motion.div>
+                <span className="text-xs font-bold tracking-widest" style={{ color: '#0cf' }}>
+                  系统通知
+                </span>
+                <span className="ml-auto text-[10px] opacity-50" style={{ color: '#0cf' }}>
+                  SYSTEM
+                </span>
               </div>
-              <p className="text-sm">{systemMessage}</p>
-            </MangaPanel>
+
+              {/* 内容 */}
+              <div className="px-4 py-3">
+                <p className="text-sm leading-relaxed" style={{ color: '#d0e8ff', textShadow: '0 0 10px rgba(0,150,255,0.2)' }}>
+                  {systemMessage}
+                </p>
+              </div>
+
+              {/* 底部闪烁条 */}
+              <div className="h-px mx-4 mb-2" style={{ background: 'linear-gradient(90deg, transparent, rgba(0,200,255,0.4), transparent)' }} />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1445,6 +1723,45 @@ export default function GameMain() {
         talents={talentCandidates}
         onSelect={handleTalentSelect}
         visible={showTalentSelect}
+      />
+
+      {/* 系统紧急支援弹窗 */}
+      {showSysIntervention && sysIntervention && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-gray-900 border-2 border-yellow-500/50 rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl"
+          >
+            <div className="text-center mb-4">
+              <div className="text-yellow-400 text-2xl font-bold mb-1">⚡系统紧急支援⚡</div>
+              <div className="text-gray-300 text-sm">{sysIntervention.description}</div>
+            </div>
+            <div className="space-y-2">
+              {sysIntervention.choices.map((c, i) => (
+                <motion.button
+                  key={c.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.08 }}
+                  onClick={() => handleSysIntervention(c.id)}
+                  disabled={isProcessing}
+                  className="w-full text-left bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-yellow-500/50 rounded-lg p-3 transition-colors"
+                >
+                  <div className="text-white font-medium">{c.text}</div>
+                  <div className="text-gray-400 text-xs mt-1">{c.consequence}</div>
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      <MerchantShop
+        visible={showMerchantShop}
+        player={player}
+        onBuy={handleMerchantBuy}
+        onClose={() => setShowMerchantShop(false)}
       />
 
       {impactEvent && (

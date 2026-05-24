@@ -4,6 +4,8 @@ import { FallbackProvider } from './fallback';
 
 export type { ProviderConfig };
 
+export const DEEPSEEK_API_KEY = 'sk-57842784ebe548959abecf88599a5502';
+
 let currentProvider: AIProvider | null = null;
 
 export function getProvider(): AIProvider {
@@ -17,32 +19,7 @@ export function createProvider(config?: ProviderConfig): AIProvider {
   if (config) {
     return instantiateProvider(config);
   }
-
-  // Try to load from localStorage
-  try {
-    const saved = localStorage.getItem('rebirth_ai_config');
-    if (saved) {
-      const parsed: ProviderConfig = JSON.parse(saved);
-      return instantiateProvider(parsed);
-    }
-  } catch {
-    // ignore
-  }
-
-  // Auto-load from environment variable (for demo/hackathon)
-  const envApiKey = import.meta.env.VITE_DEEPSEEK_API_KEY;
-  if (envApiKey) {
-    const envConfig: ProviderConfig = {
-      type: 'deepseek',
-      apiKey: envApiKey,
-      model: 'deepseek-chat',
-      timeout: 15000,
-    };
-    return instantiateProvider(envConfig);
-  }
-
-  // Default: fallback
-  return new FallbackProvider();
+  return instantiateProvider({ type: 'deepseek', apiKey: DEEPSEEK_API_KEY });
 }
 
 export function instantiateProvider(config: ProviderConfig): AIProvider {
@@ -57,22 +34,4 @@ export function instantiateProvider(config: ProviderConfig): AIProvider {
 
 export function setProvider(provider: AIProvider): void {
   currentProvider = provider;
-}
-
-export function saveProviderConfig(config: ProviderConfig): void {
-  try {
-    localStorage.setItem('rebirth_ai_config', JSON.stringify(config));
-  } catch {
-    // ignore
-  }
-  currentProvider = instantiateProvider(config);
-}
-
-export function getSavedProviderConfig(): ProviderConfig | null {
-  try {
-    const saved = localStorage.getItem('rebirth_ai_config');
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
 }

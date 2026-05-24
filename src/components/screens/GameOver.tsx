@@ -3,8 +3,10 @@ import { useGameStore } from '../../store/gameStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { getSceneById } from '../../data/scenes';
 import { getAchievementById } from '../../data/achievements';
+import { calculateEndingGrade, buildEndingReviewPrompt } from '../../engine/endingTracker';
+import { getEndingById } from '../../data/endings';
 import { motion } from 'framer-motion';
-import { RotateCcw, Trophy, Home, Star, Clock, Swords, Coins } from 'lucide-react';
+import { RotateCcw, Trophy, Home, Star, Clock, Swords, Coins, BookOpen, Heart, Users } from 'lucide-react';
 import { MangaPanel, MangaTitle } from '../manga';
 
 export default function GameOver() {
@@ -13,40 +15,76 @@ export default function GameOver() {
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
-  if (!player) {
-    setScreen('start');
-    return null;
-  }
+  if (!player) return null;
 
   const scene = getSceneById(player.progress.sceneType);
 
   const handleRestart = () => {
-    resetPlayer();
-    resetGame();
     setScreen('create');
+    // 延迟重置避免渲染期间 player 为 null 触发副作用
+    setTimeout(() => {
+      resetPlayer();
+      resetGame();
+    }, 0);
   };
 
   const handleHome = () => {
-    resetPlayer();
-    resetGame();
     setScreen('start');
+    setTimeout(() => {
+      resetPlayer();
+      resetGame();
+    }, 0);
   };
 
-  const survivalScore = Math.min(player.progress.round / 100, 1) * 30;
-  const levelScore = Math.min(player.stats.level / 100, 1) * 30;
-  const wealthScore = Math.min(player.stats.wealth / 100000, 1) * 20;
-  const combatScore = Math.min(player.stats.combatPower / 10000, 1) * 20;
-  const totalScore = Math.floor(survivalScore + levelScore + wealthScore + combatScore);
+  // ending.md.txt: 使用新的结局评分算法
+  const endingGrade = calculateEndingGrade(player);
+  const gradeConfig = {
+    S: { label: 'S', color: '#d4a017', desc: '传说' },
+    A: { label: 'A', color: '#8e44ad', desc: '史诗' },
+    B: { label: 'B', color: '#2980b9', desc: '优秀' },
+    C: { label: 'C', color: '#27ae60', desc: '良好' },
+    D: { label: 'D', color: '#888888', desc: '普通' },
+  }[endingGrade];
 
-  const getRating = () => {
-    if (totalScore >= 90) return { label: 'S', color: '#d4a017', desc: '传说' };
-    if (totalScore >= 75) return { label: 'A', color: '#8e44ad', desc: '史诗' };
-    if (totalScore >= 60) return { label: 'B', color: '#2980b9', desc: '优秀' };
-    if (totalScore >= 40) return { label: 'C', color: '#27ae60', desc: '良好' };
-    return { label: 'D', color: '#888888', desc: '普通' };
+  const rating = gradeConfig;
+
+  // 计算结局完成度
+  const ending = getEndingById(player.endingProgress.targetEndingId);
+  const completedConditions = ending
+    ? ending.victoryConditions.filter((c) => player.endingProgress.conditionStatus[c] === true).length
+    : 0;
+  const totalConditions = ending ? ending.victoryConditions.length : 0;
+
+  // ending.md.txt: 结局回顾文本
+  const getEndingReview = (): string => {
+    const decisions = player.storyMemory.decisionLog;
+    const ending = player.endingProgress.targetEndingId;
+    const endingName = ending
+      ? {
+          ending_modern_king: '都市之王',
+          ending_immortal_hermit: '隐世丹神',
+          ending_urban_legend: '都市传说',
+          ending_apocalypse_savior: '末世救主',
+          ending_apoc_fantasy_rider: '天启骑士',
+          ending_hidden_immortal: '仙道独尊',
+          ending_cyber_god: '数据飞升',
+          ending_demon_overlord: '魔神降世',
+        }[ending] || '未知结局'
+      : '平凡一生';
+
+    if (decisions.length === 0) {
+      return `${player.name}的旅程平淡无奇，没有留下太多值得铭记的故事。`;
+    }
+
+    const keyDecisions = [
+      ...decisions.slice(0, 2),
+      ...decisions.slice(-2),
+    ];
+
+    return `${player.name}的一生充满了抉择。` +
+      keyDecisions.map((d) => `第${d.round}回合，${d.choice}，${d.result}。`).join('') +
+      `最终，${player.name}迎来了属于自己的结局——${endingName}。`;
   };
-
-  const rating = getRating();
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-8 paper-bg">
@@ -81,7 +119,7 @@ export default function GameOver() {
           </div>
 
           <div className="text-center text-game-text-muted mb-6">
-            评分: {totalScore}/100 · {rating.desc}
+            评级: {rating?.desc} · 结局完成度: {completedConditions}/{totalConditions}
           </div>
 
           <div className="grid grid-cols-2 gap-4 mb-6">
@@ -129,6 +167,87 @@ export default function GameOver() {
             </div>
           )}
         </MangaPanel>
+
+        {/* ending.md.txt: 结局回顾 */}
+        {player.storyMemory.decisionLog.length > 0 && (
+          <MangaPanel className="mb-6">
+            <h3 className="text-lg font-bold mb-4 text-center manga-title">结局回顾</h3>
+            <p className="text-sm text-game-text leading-relaxed italic px-4">
+              {getEndingReview()}
+            </p>
+          </MangaPanel>
+        )}
+
+        {/* ending.md.txt: 决策时间线 */}
+        {player.storyMemory.decisionLog.length > 0 && (
+          <MangaPanel className="mb-6">
+            <h3 className="font-bold mb-4 flex items-center gap-2 manga-title">
+              <BookOpen className="w-4 h-4" style={{ color: '#2980b9' }} />
+              决策时间线
+            </h3>
+            <div className="space-y-2">
+              {player.storyMemory.decisionLog.map((d, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="flex flex-col items-center">
+                    <div className="w-2.5 h-2.5 rounded-full bg-game-accent" />
+                    {i < player.storyMemory.decisionLog.length - 1 && (
+                      <div className="w-0.5 h-full bg-gray-300 min-h-[20px]" />
+                    )}
+                  </div>
+                  <div className="pb-3">
+                    <span className="text-[10px] text-gray-400">第{d.round}回合</span>
+                    <p className="text-xs font-medium">{d.choice}</p>
+                    <p className="text-[10px] text-gray-500">{d.result}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </MangaPanel>
+        )}
+
+        {/* ending.md.txt: NPC 最终关系 */}
+        {player.npcs.length > 0 && (
+          <MangaPanel className="mb-6">
+            <h3 className="font-bold mb-4 flex items-center gap-2 manga-title">
+              <Users className="w-4 h-4" style={{ color: '#8e44ad' }} />
+              NPC 最终关系
+            </h3>
+            <div className="grid grid-cols-2 gap-2">
+              {player.npcs.map((npc) => (
+                <div key={npc.npcId} className="ink-border p-2 bg-white">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold">{npc.name}</span>
+                    {npc.isAlive ? (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded text-white"
+                        style={{
+                          backgroundColor:
+                            npc.relationship >= 80 ? '#e74c3c'
+                            : npc.relationship >= 50 ? '#f39c12'
+                            : npc.relationship >= 10 ? '#27ae60'
+                            : npc.relationship >= -10 ? '#7f8c8d'
+                            : npc.relationship >= -50 ? '#2980b9'
+                            : '#8e44ad',
+                        }}
+                      >
+                        {npc.relationship >= 80 ? '羁绊'
+                          : npc.relationship >= 50 ? '亲近'
+                          : npc.relationship >= 10 ? '友善'
+                          : npc.relationship >= -10 ? '中立'
+                          : npc.relationship >= -50 ? '冷淡'
+                          : '敌对'}{' '}
+                        {npc.relationship}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-gray-400">已离世</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{npc.role}</p>
+                </div>
+              ))}
+            </div>
+          </MangaPanel>
+        )}
 
         <div className="flex items-center justify-center gap-4">
           <motion.button onClick={handleHome} className="manga-btn-outline flex items-center gap-2" whileTap={{ scale: 0.97 }}>

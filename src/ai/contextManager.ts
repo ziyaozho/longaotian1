@@ -25,20 +25,27 @@ export function estimateTokens(text: string): number {
 
 export function summarizeHistory(history: string[], maxTokens: number): string {
   if (history.length === 0) return '无';
+  // 保留最近5个完整事件
+  const recent = history.slice(-5);
   if (history.length <= 5) {
-    const joined = history.join(' -> ');
-    return estimateTokens(joined) <= maxTokens ? joined : history.slice(-3).join(' -> ');
+    const joined = recent.join(' -> ');
+    return estimateTokens(joined) <= maxTokens ? joined : recent.slice(-3).join(' -> ');
   }
+  // 更早的事件做摘要
+  const older = history.slice(0, -5);
+  const olderSummary = older.length > 0
+    ? `[前${older.length}轮: ${older[0].slice(0, 30)}...等${older.length}轮事件]`
+    : '';
 
-  const recent = history.slice(-3);
-  const older = history.slice(0, -3);
-
-  if (older.length > 0) {
-    const summary = `${older[0].slice(0, 30)}...(${older.length}轮省略)... -> ${recent.join(' -> ')}`;
-    if (estimateTokens(summary) <= maxTokens) return summary;
-    return recent.join(' -> ');
+  const recentJoined = recent.join(' -> ');
+  const full = olderSummary ? `${olderSummary} -> ${recentJoined}` : recentJoined;
+  if (estimateTokens(full) <= maxTokens) return full;
+  // 如果太长，缩短最近的条目数量
+  const shorterRecent = history.slice(-3).join(' -> ');
+  if (olderSummary && estimateTokens(olderSummary + ' -> ' + shorterRecent) <= maxTokens) {
+    return olderSummary + ' -> ' + shorterRecent;
   }
-  return recent.join(' -> ');
+  return shorterRecent;
 }
 
 export function buildOptimizedContext(params: {
@@ -46,11 +53,12 @@ export function buildOptimizedContext(params: {
   playerState: string;
   history: string[];
   currentScene: string;
+  endingConstraint?: string;
   config?: Partial<WindowConfig>;
 }): ContextSlot[] {
   const cfg = { ...DEFAULT_CONFIG, ...params.config };
 
-  return [
+  const slots: ContextSlot[] = [
     {
       role: 'system',
       content: params.systemPrompt.slice(0, Math.floor(cfg.systemPromptTokens * 1.5)),
@@ -63,11 +71,22 @@ export function buildOptimizedContext(params: {
       role: 'user',
       content: `[历史]\n${summarizeHistory(params.history, cfg.historyTokens)}`,
     },
-    {
-      role: 'user',
-      content: `[当前]\n${params.currentScene}`,
-    },
   ];
+
+  // 结局约束注入（ending.md.txt §4）
+  if (params.endingConstraint) {
+    slots.push({
+      role: 'user',
+      content: params.endingConstraint.slice(0, Math.floor(cfg.systemPromptTokens * 1.2)),
+    });
+  }
+
+  slots.push({
+    role: 'user',
+    content: `[当前]\n${params.currentScene}`,
+  });
+
+  return slots;
 }
 
 export { DEFAULT_CONFIG };

@@ -4,6 +4,7 @@ import { usePlayerStore } from '../../store/playerStore';
 import { SYSTEMS, getAvailableSystems } from '../../data/systems';
 import { getGlobalAchievements } from '../../utils/storage';
 import { createInitialPlayer } from '../../store/playerStore';
+import { selectEndingByAttributes } from '../../engine/endingTracker';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Cpu, ArrowRight, Lock } from 'lucide-react';
 import { MangaPanel, MangaTitle } from '../manga';
@@ -32,6 +33,20 @@ export default function SystemSelect() {
     if (!sys) return;
 
     const player = createInitialPlayer(name, attributes, sceneType, sys.id, sys.name);
+
+    // ending.md.txt: 根据属性加权随机选定隐藏结局
+    const selectedEnding = selectEndingByAttributes(attributes);
+    player.endingProgress = {
+      ...player.endingProgress,
+      targetEndingId: selectedEnding.endingId,
+    };
+
+    // 设置系统对话风格
+    player.extendedSystem = {
+      ...player.extendedSystem,
+      dialogueStyle: sys.personality || '毒舌',
+    };
+
     setPlayer(player);
     setScreen('game');
   };

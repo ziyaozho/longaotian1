@@ -1,6 +1,47 @@
 import type { Player } from '../types';
 
 const SAVE_KEY = 'rebirth_simulator_saves';
+
+/** 向后兼容：为旧存档填充 ending.md.txt 新增字段的默认值 + 背包去重 */
+export function migratePlayerData(player: Partial<Player>): Player {
+  const inventory = player.inventory ?? [];
+  const seen = new Set<string>();
+  const nonItemNames = /^普通人$|^系统商城$|^系统$|^NPC$/;
+  const deduped = inventory.filter(i => {
+    if (!i || !i.id || nonItemNames.test(i.name)) return false;
+    if (seen.has(i.id)) return false;
+    seen.add(i.id);
+    return true;
+  });
+  if (deduped.length !== inventory.length) {
+    console.warn(`[迁移] 背包去重: 移除 ${inventory.length - deduped.length} 个重复物品`);
+  }
+
+  return {
+    ...player,
+    inventory: deduped,
+    npcs: player.npcs ?? [],
+    relationships: player.relationships ?? {},
+    storyMemory: player.storyMemory ?? {
+      longTermSummary: '',
+      recentEvents: [],
+      decisionLog: [],
+    },
+    worldState: player.worldState ?? {
+      currentLocation: '新手村',
+      timeline: '第一天·清晨',
+      globalFlags: {},
+    },
+    extendedSystem: player.extendedSystem ?? {
+      dialogueStyle: '毒舌',
+    },
+    endingProgress: player.endingProgress ?? {
+      targetEndingId: '',
+      conditionStatus: {},
+      isFailed: false,
+    },
+  } as Player;
+}
 const ACHIEVEMENT_KEY = 'rebirth_simulator_achievements';
 const VISITED_SCENES_KEY = 'rebirth_simulator_visited_scenes';
 
@@ -13,7 +54,10 @@ export const getSaves = (): SaveData => {
   try {
     const data = localStorage.getItem(SAVE_KEY);
     if (data) {
-      return JSON.parse(data);
+      const parsed = JSON.parse(data) as SaveData;
+      // 向后兼容：迁移每个存档
+      parsed.saves = parsed.saves.map((s) => migratePlayerData(s));
+      return parsed;
     }
   } catch (e) {
     console.error('Failed to load saves:', e);
@@ -43,7 +87,8 @@ export const savePlayer = (player: Player): void => {
 export const loadPlayer = (saveId: string): Player | null => {
   try {
     const data = getSaves();
-    return data.saves.find((s) => s.id === saveId) || null;
+    const found = data.saves.find((s) => s.id === saveId);
+    return found ? migratePlayerData(found) : null;
   } catch (e) {
     console.error('Failed to load player:', e);
     return null;
@@ -127,7 +172,8 @@ export const importSave = (data: string): Player | null => {
       console.error('Save checksum invalid');
       return null;
     }
-    return JSON.parse(envelope.d);
+    const player = JSON.parse(envelope.d) as Partial<Player>;
+    return migratePlayerData(player);
   } catch (e) {
     console.error('Failed to import save:', e);
     return null;

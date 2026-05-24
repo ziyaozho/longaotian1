@@ -1,33 +1,60 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../../store/gameStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { getSaves, getGlobalAchievements } from '../../utils/storage';
-import { motion } from 'framer-motion';
-import { Play, BookOpen, Trophy, RotateCcw } from 'lucide-react';
+import { getSaveSlots, loadSave, deleteSave, migrateFromLocalStorage, type SaveSlot } from '../../utils/database';
+import { getGlobalAchievements } from '../../utils/storage';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Play, BookOpen, Trophy, RotateCcw, Trash2, Clock, MapPin, Star } from 'lucide-react';
 import { MangaPanel, MangaTitle, Screentone } from '../manga';
 
 export default function StartScreen() {
   const { setScreen } = useGameStore();
   const { setPlayer } = usePlayerStore();
 
-  useEffect(() => { window.scrollTo(0, 0); }, []);
+  const [showSaves, setShowSaves] = useState(false);
+  const [slots, setSlots] = useState<Omit<SaveSlot, 'data'>[]>([]);
+  const [hasSaves, setHasSaves] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    // 迁移旧数据 + 加载存档列表
+    (async () => {
+      await migrateFromLocalStorage();
+      const list = await getSaveSlots();
+      setSlots(list);
+      setHasSaves(list.length > 0);
+    })();
+  }, []);
 
   const handleNewGame = () => setScreen('create');
 
-  const handleContinue = () => {
-    const saves = getSaves();
-    if (saves.lastSaveId) {
-      const player = saves.saves.find((s) => s.id === saves.lastSaveId);
-      if (player) {
-        setPlayer(player);
-        setScreen('game');
-      }
-    }
+  const handleOpenSaves = async () => {
+    const list = await getSaveSlots();
+    setSlots(list);
+    setShowSaves(true);
   };
 
-  const handleAchievements = () => setScreen('achievements');
+  const handleLoadSave = async (saveId: string) => {
+    setLoading(true);
+    const slot = await loadSave(saveId);
+    if (slot) {
+      const { migratePlayerData } = await import('../../utils/storage');
+      setPlayer(migratePlayerData(slot.data));
+      setShowSaves(false);
+      setScreen('game');
+    }
+    setLoading(false);
+  };
 
-  const hasSave = getSaves().saves.length > 0;
+  const handleDeleteSave = async (saveId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await deleteSave(saveId);
+    const list = await getSaveSlots();
+    setSlots(list);
+    setHasSaves(list.length > 0);
+  };
+
   const globalAchievements = getGlobalAchievements();
 
   return (
@@ -60,19 +87,19 @@ export default function StartScreen() {
               </motion.button>
             </div>
 
-            {hasSave && (
+            {hasSaves && (
               <motion.button
-                onClick={handleContinue}
+                onClick={handleOpenSaves}
                 className="manga-btn-outline flex items-center gap-2 w-full justify-center"
                 whileTap={{ scale: 0.97 }}
               >
                 <RotateCcw className="w-5 h-5" />
-                继续游戏
+                继续游戏 ({slots.length})
               </motion.button>
             )}
 
             <motion.button
-              onClick={handleAchievements}
+              onClick={() => setScreen('achievements')}
               className="manga-btn-outline flex items-center gap-2 w-full justify-center"
               whileTap={{ scale: 0.97 }}
             >
@@ -83,21 +110,108 @@ export default function StartScreen() {
         </MangaPanel>
 
         <div className="mt-8 flex items-center justify-center gap-6 text-game-text-muted text-xs">
-          <div className="flex items-center gap-1">
-            <BookOpen className="w-4 h-4" />
-            <span>5个基础场景</span>
-          </div>
+          <div className="flex items-center gap-1"><BookOpen className="w-4 h-4" /><span>5个基础场景</span></div>
           <span className="text-game-text-muted/30">·</span>
-          <div className="flex items-center gap-1">
-            <span>10+系统可选</span>
-          </div>
+          <div className="flex items-center gap-1"><span>10+系统可选</span></div>
           <span className="text-game-text-muted/30">·</span>
-          <div className="flex items-center gap-1">
-            <Trophy className="w-4 h-4" />
-            <span>30+成就待解锁</span>
-          </div>
+          <div className="flex items-center gap-1"><Trophy className="w-4 h-4" /><span>30+成就待解锁</span></div>
         </div>
       </motion.div>
+
+      {/* ============================================================ */}
+      {/* 存档选择弹窗 */}
+      {/* ============================================================ */}
+      <AnimatePresence>
+        {showSaves && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: 'rgba(0,0,0,0.7)' }}
+            onClick={() => setShowSaves(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-md mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <MangaPanel className="!p-5">
+                <h2 className="text-lg font-bold mb-1 manga-title">选择存档</h2>
+                <p className="text-xs text-game-text-muted mb-4">
+                  {slots.length} 个存档 · 数据存储在本地浏览器数据库
+                </p>
+
+                {loading && (
+                  <div className="text-center py-8 text-game-text-muted">加载中...</div>
+                )}
+
+                {!loading && slots.length === 0 && (
+                  <div className="text-center py-8 text-game-text-muted">
+                    <p>没有存档</p>
+                    <button
+                      onClick={() => { setShowSaves(false); handleNewGame(); }}
+                      className="manga-btn text-sm mt-3 px-4 py-1.5"
+                    >
+                      创建新游戏
+                    </button>
+                  </div>
+                )}
+
+                {!loading && slots.length > 0 && (
+                  <div className="space-y-2 max-h-80 overflow-y-auto">
+                    {slots.map((slot) => (
+                      <motion.div
+                        key={slot.id}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="ink-border p-3 bg-white cursor-pointer hover:bg-gray-50 transition-colors flex items-center justify-between group"
+                        onClick={() => handleLoadSave(slot.id)}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-bold text-sm truncate">{slot.playerName}</span>
+                            <span className="manga-badge text-[10px]">Lv.{slot.level}</span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[10px] text-game-text-muted">
+                            <span className="flex items-center gap-1">
+                              <MapPin className="w-3 h-3" /> {slot.sceneName}
+                            </span>
+                            <span>第{slot.round}回合</span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {new Date(slot.updatedAt).toLocaleString('zh-CN', {
+                                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                              })}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          onClick={(e) => handleDeleteSave(slot.id, e)}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-red-50 rounded"
+                          title="删除存档"
+                        >
+                          <Trash2 className="w-4 h-4" style={{ color: '#c0392b' }} />
+                        </button>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  onClick={() => setShowSaves(false)}
+                  className="manga-btn-outline text-sm w-full mt-4 py-1.5"
+                >
+                  关闭
+                </button>
+              </MangaPanel>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

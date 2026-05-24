@@ -1377,3 +1377,58 @@ export const ALL_SCENE_ARCS: SceneArc[] = [
 export const getSceneArcById = (worldId: string): SceneArc | undefined => {
   return ALL_SCENE_ARCS.find(arc => arc.worldId === worldId);
 };
+
+/** 节点类型到 sceneLevel 阈值的映射（每个节点需要的最低 sceneLevel） */
+const NODE_LEVEL_THRESHOLDS: Record<string, number> = {
+  entryEvent: 1,
+  midpointTwist: 2,
+  essenceClimax: 4,
+  departure: 6,
+};
+
+/** 节点类型到 storyFlag 名称的映射 */
+function getNodeFlag(worldId: string, nodeId: string): string {
+  return `arc_${worldId}_${nodeId}`;
+}
+
+/**
+ * 获取当前玩家应该触发的下一个剧情节点
+ * @param sceneType 当前场景类型
+ * @param sceneLevel 当前场景等级 (Math.floor(level/10)+1)
+ * @param storyFlags 已触发的故事标记
+ * @returns 应该触发的节点，或 null（所有节点已完成）
+ */
+export function getActiveStoryNode(
+  sceneType: string,
+  sceneLevel: number,
+  storyFlags: string[],
+): StoryNode | null {
+  const arc = getSceneArcById(sceneType);
+  if (!arc) return null;
+
+  const nodes: Array<{ key: string; node: StoryNode; type: string }> = [
+    { key: 'entryEvent', node: arc.entryEvent, type: 'entryEvent' },
+    { key: 'midpointTwist', node: arc.midpointTwist, type: 'midpointTwist' },
+    { key: 'essenceClimax', node: arc.essenceClimax, type: 'essenceClimax' },
+    { key: 'departure', node: arc.departure, type: 'departure' },
+  ];
+
+  for (const { key, node, type } of nodes) {
+    const flag = getNodeFlag(sceneType, node.id);
+    // 已触发过则跳过
+    if (storyFlags.includes(flag)) continue;
+    // sceneLevel 未达到阈值则跳过
+    const threshold = NODE_LEVEL_THRESHOLDS[type] || 1;
+    if (sceneLevel < threshold) continue;
+    // 前置节点未完成则跳过
+    if (node.prerequisites && node.prerequisites.length > 0) {
+      const allPrereqsMet = node.prerequisites.every((pre) =>
+        storyFlags.includes(getNodeFlag(sceneType, pre)),
+      );
+      if (!allPrereqsMet) continue;
+    }
+    return node;
+  }
+
+  return null;
+}

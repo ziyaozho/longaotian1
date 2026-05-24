@@ -1,6 +1,13 @@
 import type { Item } from '../types';
 import { randomInt, checkProbability, randomChoice } from '../utils/random';
 
+let itemIdCounter = 0;
+
+export function generateItemId(): string {
+  itemIdCounter++;
+  return `item_${Date.now()}_${crypto.randomUUID()}_${itemIdCounter}`;
+}
+
 export const ITEM_TEMPLATES: Array<Pick<Item, 'name' | 'description' | 'rarity' | 'type' | 'effect'>> = [
   // 消耗品 - 恢复类
   { name: '小还丹', description: '基础的恢复丹药，能恢复少量生命值', rarity: 'common', type: 'consumable', effect: { hp: 30 } },
@@ -83,7 +90,7 @@ export function generateRandomItem(sceneType: string, playerLevel: number): Item
   const template = randomChoice(candidates);
 
   return {
-    id: `item_${Date.now()}_${randomInt(1000, 9999)}`,
+    id: generateItemId(),
     ...template,
   };
 }
@@ -126,7 +133,7 @@ export function generateCombatLoot(sceneType: string, enemyLevel: number, isVict
   const template = randomChoice(finalCandidates);
 
   return {
-    id: `item_${Date.now()}_${randomInt(1000, 9999)}`,
+    id: generateItemId(),
     ...template,
   };
 }
@@ -142,6 +149,151 @@ export function useItemEffect(item: Item): Record<string, number> {
   }
 
   return effects;
+}
+
+/** 根据关键词模糊匹配物品模板（用于从AI叙事中提取物品） */
+export function findItemByKeyword(keyword: string): typeof ITEM_TEMPLATES[0] | null {
+  // 先尝试精确匹配
+  const exact = ITEM_TEMPLATES.find(item => item.name === keyword);
+  if (exact) return exact;
+
+  // 再尝试部分匹配（物品名包含关键词，或关键词包含物品名）
+  const candidates = ITEM_TEMPLATES.filter(item =>
+    item.name.includes(keyword) || keyword.includes(item.name)
+  );
+
+  // 如果多个匹配，按稀有度降序返回最好的
+  const rarityRank = { legendary: 3, epic: 2, rare: 1, common: 0 };
+  candidates.sort((a, b) => (rarityRank[b.rarity] || 0) - (rarityRank[a.rarity] || 0));
+  return candidates[0] || null;
+}
+
+/** 从文本中解析 【物品名】 标记，返回匹配的物品模板列表 */
+export function extractItemsFromText(text: string): Array<{ name: string; template: typeof ITEM_TEMPLATES[0] }> {
+  const matches = text.matchAll(/【([^】]+)】/g);
+  const results: Array<{ name: string; template: typeof ITEM_TEMPLATES[0] }> = [];
+  for (const match of matches) {
+    const name = match[1].trim();
+    if (!name) continue;
+    let template = findItemByKeyword(name);
+    if (!template) {
+      template = synthesizeItem(name);
+    }
+    if (template) {
+      results.push({ name, template });
+    }
+  }
+  return results;
+}
+
+/**
+ * 根据物品名推断类型和效果，生成一个兜底模板
+ * 当 AI 生成的道具名不在 ITEM_TEMPLATES 中时使用
+ */
+function synthesizeItem(name: string): typeof ITEM_TEMPLATES[0] | null {
+  if (!name || name.length < 2) return null;
+
+  // 拒绝明显不是物品的词
+  const nonItemWords = /普通人|路人|系统商城|商店|任务|事件|系统|提示|公告|消息|对话|选项|菜单|界面|按钮|场景|地图|关卡|副本|BOSS|NPC/;
+  if (nonItemWords.test(name)) return null;
+
+  // 按名称后缀推断类型
+  if (/剑|刀|枪|刃|匕|戟|棍|棒|斧|锤|弓|弩|鞭|锏|矛|叉|镰|钩|杖|杵|镐|钺/.test(name)) {
+    return {
+      name,
+      description: `${name}，一柄不错的武器`,
+      rarity: 'rare',
+      type: 'weapon',
+      effect: { combatPower: 20 },
+    };
+  }
+  if (/甲|衣|袍|篷|氅|衫|裳|铠|盾|盔|冠|胄|靴|履|带|戒|佩|腕/.test(name)) {
+    return {
+      name,
+      description: `${name}，一件防具`,
+      rarity: 'rare',
+      type: 'armor',
+      effect: { maxHp: 40 },
+    };
+  }
+  if (/丹|药|散|丸|膏|汤|液|露|剂|水|茶|酒/.test(name)) {
+    return {
+      name,
+      description: `${name}，可用于恢复`,
+      rarity: 'common',
+      type: 'consumable',
+      effect: { hp: 40 },
+    };
+  }
+  if (/石|玉|珠|核|晶|矿|铁|铜|金|银|钢/.test(name)) {
+    return {
+      name,
+      description: `${name}，一种稀有材料`,
+      rarity: 'rare',
+      type: 'material',
+      effect: { wealth: 80 },
+    };
+  }
+  if (/诀|经|典|谱|卷|策|书|图|录|篇|章/.test(name)) {
+    return {
+      name,
+      description: `${name}，记录了某种技艺`,
+      rarity: 'rare',
+      type: 'skill_book',
+      effect: { combatPower: 15, intelligence: 1 },
+    };
+  }
+
+  // 无法识别类型 —— 兜底为普通物品，保证剧情说获得的每件物品都能生成
+  return {
+    name,
+    description: `${name}，一件看起来不太寻常的物品`,
+    rarity: 'common',
+    type: 'consumable',
+    effect: { hp: 10 },
+  };
+}
+
+/** 检测文本是否暗示获得物品（无【】标记时的后备检测） */
+export function impliesItemAcquisition(text: string): boolean {
+  const obtainVerbs = /获得|得到|拿到|捡到|捡起|收取|收下|拿走|夺取|缴获|发现|找到|搜出|开出|掉落|奖励|赠予|拾取|领取|领取|赚取/;
+  const itemNouns = /剑|刀|枪|甲|衣|丹|药|符|石|书|卷|珠|环|戒|鼎|塔|镜|图|印|宝|袋|盒|箱|瓶|壶|炉|幡|令|牌|令|钟|铃|伞|灯/;
+
+  // 排除明显不是物品的上下文
+  const nonItemContext = /系统商城|任务提示|关卡|副本|NPC|菜单|界面|商店|功能/;
+  if (nonItemContext.test(text)) return false;
+
+  return obtainVerbs.test(text) && itemNouns.test(text);
+}
+
+/** 根据文本生成一个相关物品（用于AI剧情物品奖励） */
+export function generateContextualItem(sceneType: string, playerLevel: number, contextText: string): Item | null {
+  // 先尝试从【】标记匹配
+  const extracted = extractItemsFromText(contextText);
+  if (extracted.length > 0) {
+    const chosen = extracted[Math.floor(Math.random() * extracted.length)];
+    return {
+      id: generateItemId(),
+      ...chosen.template,
+    };
+  }
+
+  // 没有标记则用常规随机掉落（但提高概率）
+  const sceneItemNames = SCENE_ITEMS[sceneType] || SCENE_ITEMS['modern_city'];
+  const available = ITEM_TEMPLATES.filter(item => sceneItemNames.includes(item.name));
+  if (available.length === 0) return null;
+
+  // 高概率掉落，偏向武器和消耗品（叙事中更容易涉及的类型）
+  const narrativeItems = available.filter(item =>
+    item.type === 'weapon' || item.type === 'consumable' || item.type === 'skill_book'
+  );
+  const candidates = narrativeItems.length > 0 ? narrativeItems : available;
+  const template = candidates[Math.floor(Math.random() * candidates.length)];
+
+  return {
+    id: generateItemId(),
+    ...template,
+  };
 }
 
 // 装备道具到玩家（武器/防具/技能书提供永久加成）
