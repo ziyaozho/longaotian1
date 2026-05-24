@@ -1,0 +1,155 @@
+<h2>预缓存系统设计</h2>
+<p class="subtitle">Demo 模式下 AI 内容秒出，不依赖网络，但看起来和实时生成一模一样</p>
+
+<div class="section">
+  <h3>工作原理</h3>
+  <div class="mockup">
+    <div class="mockup-header">预缓存生命周期</div>
+    <div class="mockup-body">
+      <div style="font-family:monospace; font-size:13px; line-height:2.2; padding:8px;">
+
+        <div style="background:oklch(88% 0.08 250); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>① 构建时：</b>运行 <code>pnpm run precache</code> 脚本
+        </div>
+        <div style="margin:4px 0 4px 24px; font-size:12px; color:oklch(40% 0.01 250);">
+          脚本读取 demoConfig 中的事件序列 → 逐个调用 DeepSeek API → 结果写入 precache/*.json
+        </div>
+
+        <div style="background:oklch(88% 0.08 140); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>② 运行时（Demo 模式）：</b>precacheService 直接从 JSON 读取
+        </div>
+        <div style="margin:4px 0 4px 24px; font-size:12px; color:oklch(40% 0.01 250);">
+          precacheService.lookup(eventId) → 返回预生成内容 → 模拟打字机动画输出
+        </div>
+
+        <div style="background:oklch(88% 0.08 0); padding:10px 14px; border-radius:6px; margin:6px 0;">
+          <b>③ 运行时（正常模式）：</b>走原有的 deepseek.ts 实时调用
+        </div>
+
+        <div style="margin:4px 0 4px 24px; font-size:12px; color:oklch(40% 0.01 250);">
+          完全不受影响，precache 层对正常模式透明
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>缓存数据结构</h3>
+  <div class="mockup">
+    <div class="mockup-header">precache/demo_v1.json</div>
+    <div class="mockup-body">
+      <pre style="background:oklch(20% 0.01 250); color:oklch(90% 0.01 100); padding:16px; border-radius:8px; font-size:12px; overflow-x:auto;">{
+  "version": "demo_v1",
+  "generatedAt": "2026-05-21T10:00:00Z",
+  "events": {
+    "char_create": {
+      "sceneText": "天元大陆，灵气充沛...",
+      "choices": [
+        { "id": "a", "text": "踏入青云宗", "effects": {...} },
+        { "id": "b", "text": "独自修炼", "effects": {...} }
+      ],
+      "systemMessage": "宿主，检测到灵气波动...",
+      "animationType": "fade_in"
+    },
+    "turn_1": { "...": "..." },
+    "turn_2": { "...": "..." },
+    "combat_1": { "...": "..." },
+    "npc_encounter_1": { "...": "..." },
+    "climax_reveal": { "...": "..." },
+    "ending": { "...": "..." }
+  },
+  "metadata": {
+    "totalTokens": 8420,
+    "modelUsed": "deepseek-chat",
+    "generationTime": "12.3s"
+  }
+}</pre>
+      <p style="font-size:12px; opacity:0.7; margin-top:8px;">
+        约 10-15 个事件节点覆盖整个 3 分钟演示流程，总缓存大小约 15-25KB
+      </p>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>打字机模拟</h3>
+  <div class="mockup">
+    <div class="mockup-header">让预缓存内容看起来像实时生成</div>
+    <div class="mockup-body">
+      <div style="display:flex; gap:16px;">
+        <div style="flex:1;">
+          <div class="placeholder" style="height:60px; display:flex; align-items:center; justify-content:center; font-size:13px;">
+            逐字显示<br>→ 150-200字/分钟 速度
+          </div>
+          <p style="font-size:12px; text-align:center; margin-top:8px;">打字机效果</p>
+        </div>
+        <div style="flex:1;">
+          <div class="placeholder" style="height:60px; display:flex; align-items:center; justify-content:center; font-size:13px;">
+            ▮ 闪烁光标<br>→ 随机 300-800ms 间隔
+          </div>
+          <p style="font-size:12px; text-align:center; margin-top:8px;">生成指示器</p>
+        </div>
+        <div style="flex:1;">
+          <div class="placeholder" style="height:60px; display:flex; align-items:center; justify-content:center; font-size:13px;">
+            选项逐个弹出<br>→ 200ms stagger
+          </div>
+          <p style="font-size:12px; text-align:center; margin-top:8px;">选项动画</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>预缓存生成脚本</h3>
+  <div class="mockup">
+    <div class="mockup-header">scripts/generate-precache.ts</div>
+    <div class="mockup-body">
+      <pre style="background:oklch(20% 0.01 250); color:oklch(90% 0.01 100); padding:16px; border-radius:8px; font-size:12px;">// 伪代码示意
+import { demoConfig } from '../src/demo/demoConfig';
+import { callDeepSeek } from '../src/ai/deepseek';
+import { writeFileSync } from 'fs';
+
+async function generatePrecache() {
+  const cache = { events: {} };
+
+  for (const event of demoConfig.eventSequence) {
+    console.log(`生成: ${event.id}...`);
+    const result = await callDeepSeek(event.prompt);
+    cache.events[event.id] = result;
+  }
+
+  writeFileSync('src/demo/precache/demo_v1.json', JSON.stringify(cache, null, 2));
+  console.log('✅ 预缓存生成完成');
+}
+
+generatePrecache();</pre>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>容错策略</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="card-body">
+        <h3>缓存未命中</h3>
+        <p>如果 eventId 在缓存中找不到 → 自动回退到实时 API 调用，同时记录 warning 日志</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>缓存过期</h3>
+        <p>如果 demoConfig 版本号与缓存 version 不匹配 → 构建时报错，提示重新执行 precache 脚本</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>网络恢复</h3>
+        <p>Demo 模式下即使有网络，也优先使用缓存。只有缓存损坏时才实时调用</p>
+      </div>
+    </div>
+  </div>
+</div>

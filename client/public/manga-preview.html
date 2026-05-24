@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>漫画风格色板预览 — 人生重开模拟器</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Noto+Sans+SC:wght@400;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #e8e0d5; font-family: 'Noto Sans SC', sans-serif; padding: 24px; }
+
+  h2 {
+    font-family: 'Bangers', cursive;
+    font-size: 2.5rem;
+    letter-spacing: 2px;
+    margin: 32px 0 16px;
+    border-bottom: 4px solid #1a1a1a;
+    padding-bottom: 8px;
+  }
+  h2:first-child { margin-top: 0; }
+
+  .compare { display: flex; gap: 24px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 360px; }
+
+  .paper {
+    background: #f5f0e8;
+    background-image: repeating-conic-gradient(#f5f0e8 0% 25%, #f0ebe0 0% 50%);
+    background-size: 8px 8px;
+    border: 3px solid #1a1a1a;
+    padding: 24px;
+    box-shadow: 4px 4px 0 #1a1a1a;
+  }
+
+  .card-old {
+    background: #1a1a2e;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 24px;
+    color: #e2e8f0;
+  }
+
+  .card-manga {
+    background: #ffffff;
+    border: 3px solid #1a1a1a;
+    border-radius: 2px;
+    padding: 24px;
+    color: #1a1a1a;
+    box-shadow: 4px 4px 0 #1a1a1a;
+    position: relative;
+  }
+  .card-manga::after {
+    content: '';
+    position: absolute;
+    top: 8px; right: 8px;
+    width: 24px; height: 24px;
+    background: repeating-conic-gradient(#1a1a1a 0% 25%, transparent 0% 50%);
+    background-size: 4px 4px;
+    border-radius: 50%;
+  }
+
+  .swatch { display: flex; gap: 12px; margin: 8px 0 16px; flex-wrap: wrap; }
+  .swatch-item {
+    width: 64px; height: 64px;
+    border-radius: 2px;
+    font-size: 10px; text-align: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700;
+  }
+  .swatch-item span { margin-top: 4px; opacity: 0.7; }
+
+  .btn-old {
+    background: #e94560; color: #fff;
+    border: none; border-radius: 8px;
+    padding: 12px 24px; font-size: 16px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn-old:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(233,69,96,0.5); }
+
+  .btn-manga {
+    background: #1a1a1a; color: #f5f0e8;
+    border: 3px solid #1a1a1a; border-radius: 2px;
+    padding: 12px 24px; font-size: 16px; font-weight: 900;
+    cursor: pointer; transition: all 0.15s;
+    font-family: 'Bangers', cursive; letter-spacing: 1px;
+    box-shadow: 3px 3px 0 #888;
+  }
+  .btn-manga:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #888; }
+
+  .stat-bar-old {
+    height: 8px; border-radius: 999px;
+    background: rgba(255,255,255,0.1); overflow: hidden;
+  }
+  .stat-bar-old-fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, #00d9a3, #4facfe);
+    transition: width 0.5s;
+  }
+
+  .stat-bar-manga {
+    height: 12px; border-radius: 0;
+    background: repeating-conic-gradient(#ccc 0% 25%, #e0e0e0 0% 50%);
+    background-size: 4px 4px;
+    border: 2px solid #1a1a1a;
+    overflow: hidden;
+  }
+  .stat-bar-manga-fill {
+    height: 100%; border-radius: 0;
+    background: #1a1a1a;
+    transition: width 0.5s;
+  }
+
+  .title-old {
+    font-size: 2rem; font-weight: 700;
+    background: linear-gradient(90deg, #e94560, #a855f7);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  .title-manga {
+    font-family: 'Bangers', cursive;
+    font-size: 2.5rem; font-weight: 400;
+    color: #1a1a1a;
+    text-shadow: 3px 3px 0 rgba(0,0,0,0.1);
+    letter-spacing: 2px;
+    transform: rotate(-1deg);
+  }
+
+  .badge-old {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 12px; font-weight: 700;
+    background: rgba(0,217,163,0.2); color: #00d9a3;
+  }
+
+  .badge-manga {
+    display: inline-block; padding: 2px 8px; border-radius: 0;
+    font-size: 12px; font-weight: 900;
+    background: #1a1a1a; color: #f5f0e8;
+  }
+
+  .halftone-dots {
+    width: 120px; height: 30px;
+    background: repeating-conic-gradient(#1a1a1a 0% 25%, transparent 0% 50%);
+    background-size: 4px 4px;
+  }
+  .halftone-lines {
+    width: 120px; height: 30px;
+    background: repeating-linear-gradient(0deg, #1a1a1a, #1a1a1a 2px, transparent 2px, transparent 4px);
+  }
+  .halftone-cross {
+    width: 120px; height: 30px;
+    background:
+      repeating-linear-gradient(45deg, #1a1a1a 0px, #1a1a1a 1px, transparent 1px, transparent 4px),
+      repeating-linear-gradient(-45deg, #1a1a1a 0px, #1a1a1a 1px, transparent 1px, transparent 4px);
+  }
+
+  .speedlines {
+    position: relative; width: 200px; height: 60px; overflow: hidden;
+  }
+  .speedlines::before {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-conic-gradient(at 50% 50%, transparent 0% 2%, #1a1a1a 3% 5%, transparent 5% 8%);
+    background-size: 60px 60px;
+  }
+
+  .onomatopoeia {
+    font-family: 'Bangers', cursive;
+    font-size: 3rem; color: #1a1a1a;
+    text-shadow: 4px 4px 0 #ccc;
+    transform: rotate(-5deg);
+    display: inline-block;
+  }
+
+  label { display: block; font-size: 11px; font-weight: 700; margin: 8px 0 2px; opacity: 0.6; }
+  .muted { font-size: 12px; opacity: 0.5; }
+</style>
+</head>
+<body>
+
+<h2>🔄 色板对比</h2>
+
+<div class="compare">
+  <!-- 旧版 -->
+  <div class="col">
+    <label>当前 — 科幻系统流</label>
+    <div class="card-old">
+      <div class="title-old">人生重开模拟器</div>
+      <div style="margin:12px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <span>HP</span><span>85/100</span>
+        </div>
+        <div class="stat-bar-old"><div class="stat-bar-old-fill" style="width:85%"></div></div>
+      </div>
+      <div style="margin:12px 0">
+        <div style="display:flex;justify-content:space-between;font-size:12px">
+          <span>MP</span><span>40/60</span>
+        </div>
+        <div class="stat-bar-old"><div class="stat-bar-old-fill" style="width:67%"></div></div>
+      </div>
+      <div style="display:flex;gap:8px;margin:12px 0">
+        <span class="badge-old">修仙世界</span>
+        <span class="badge-old">18岁</span>
+        <span class="badge-old">第3回合</span>
+      </div>
+      <button class="btn-old">继续冒险</button>
+      <div class="muted" style="margin-top:8px">颜色: #0f0f1a / #e94560 / #a855f7</div>
+    </div>
+    <div class="swatch" style="margin-top:12px">
+      <div class="swatch-item" style="background:#0f0f1a;color:#e2e8f0">背景</div>
+      <div class="swatch-item" style="background:#1a1a2e;color:#e2e8f0">卡片</div>
+      <div class="swatch-item" style="background:#e94560;color:#fff">强调</div>
+      <div class="swatch-item" style="background:#ffd700;color:#1a1a1a">金色</div>
+      <div class="swatch-item" style="background:#00d9a3;color:#1a1a1a">绿色</div>
+      <div class="swatch-item" style="background:#a855f7;color:#fff">紫色</div>
+    </div>
+  </div>
+
+  <!-- 新版 -->
+  <div class="col">
+    <label>新版 — 黑白漫画（航海王风格）</label>
+    <div class="paper">
+      <div class="card-manga">
+        <div class="title-manga">人生重开模拟器</div>
+        <div style="margin:12px 0">
+          <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:900">
+            <span>HP</span><span>85/100</span>
+          </div>
+          <div class="stat-bar-manga"><div class="stat-bar-manga-fill" style="width:85%"></div></div>
+        </div>
+        <div style="margin:12px 0">
+          <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:900">
+            <span>MP</span><span>40/60</span>
+          </div>
+          <div class="stat-bar-manga"><div class="stat-bar-manga-fill" style="width:67%"></div></div>
+        </div>
+        <div style="display:flex;gap:8px;margin:12px 0">
+          <span class="badge-manga">修仙世界</span>
+          <span class="badge-manga">18岁</span>
+          <span class="badge-manga">第3回合</span>
+        </div>
+        <button class="btn-manga">继续冒险</button>
+      </div>
+      <div class="muted" style="margin-top:8px">颜色: 纸白 #f5f0e8 / 墨黑 #1a1a1a / 保留彩色点缀</div>
+    </div>
+    <div class="swatch" style="margin-top:12px">
+      <div class="swatch-item" style="background:#f5f0e8;color:#1a1a1a;border:2px solid #1a1a1a">纸白</div>
+      <div class="swatch-item" style="background:#ffffff;color:#1a1a1a;border:2px solid #1a1a1a">对白框</div>
+      <div class="swatch-item" style="background:#1a1a1a;color:#f5f0e8">墨黑</div>
+      <div class="swatch-item" style="background:#ffd700;color:#1a1a1a;border:2px solid #1a1a1a">金色</div>
+      <div class="swatch-item" style="background:#27ae60;color:#fff">HP绿</div>
+      <div class="swatch-item" style="background:#2980b9;color:#fff">MP蓝</div>
+    </div>
+  </div>
+</div>
+
+<h2>🖌 漫画纹理系统</h2>
+
+<div class="paper" style="display:flex;gap:24px;flex-wrap:wrap;align-items:center">
+  <div>
+    <label>网点纸 (10%) — 浅阴影</label>
+    <div class="halftone-dots"></div>
+    <label style="margin-top:8px">网点纸 (30%) — 深阴影</label>
+    <div class="halftone-dots" style="background-size:3px 3px"></div>
+    <label style="margin-top:8px">平行线 — 速度/能量</label>
+    <div class="halftone-lines"></div>
+    <label style="margin-top:8px">交叉网线 — 暗部</label>
+    <div class="halftone-cross"></div>
+  </div>
+  <div>
+    <label>集中线 (速度线)</label>
+    <div class="speedlines"></div>
+    <label style="margin-top:8px">拟声词 — 手写体</label>
+    <div class="onomatopoeia">ドン！</div>
+    <div class="onomatopoeia" style="font-size:2rem;transform:rotate(3deg)">嗖—</div>
+  </div>
+  <div>
+    <label>纸张纹理 (模拟漫画纸)</label>
+    <div style="width:200px;height:80px;background:
+      repeating-conic-gradient(#f5f0e8 0% 25%, #f0ebe0 0% 50%);
+      background-size: 6px 6px; border: 2px solid #1a1a1a;"></div>
+    <label style="margin-top:8px">分格边框 + 角标</label>
+    <div style="width:200px;height:80px;border:3px solid #1a1a1a;position:relative;background:#fff">
+      <div style="position:absolute;top:-2px;right:12px;width:16px;height:16px;background:#1a1a1a;clip-path:polygon(0 0,100% 0,100% 100%)"></div>
+      <div style="position:absolute;top:6px;right:4px;font-size:10px;font-weight:900;color:#f5f0e8">3</div>
+    </div>
+  </div>
+</div>
+
+<h2>🔤 字体对比</h2>
+
+<div class="compare">
+  <div class="col">
+    <label>当前 — Segoe UI / system-ui</label>
+    <div class="card-old">
+      <p style="font-size:28px;font-weight:700">人生重开模拟器</p>
+      <p style="font-size:18px">欢迎来到修仙世界</p>
+      <p style="font-size:14px">你选择踏入这片土地，前方是未知的冒险...</p>
+    </div>
+  </div>
+  <div class="col">
+    <label>新版 — Bangers (标题) + Noto Sans SC (正文)</label>
+    <div class="paper">
+      <div class="card-manga">
+        <p style="font-family:'Bangers',cursive;font-size:32px;letter-spacing:2px;transform:rotate(-1deg)">人生重开模拟器</p>
+        <p style="font-size:18px;font-weight:900;margin-top:4px">欢迎来到修仙世界</p>
+        <p style="font-size:14px;margin-top:4px">你选择踏入这片土地，前方是未知的冒险...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>🎯 按钮对比</h2>
+
+<div class="compare">
+  <div class="col">
+    <label>当前</label>
+    <div class="card-old">
+      <button class="btn-old" style="display:block;width:100%;margin-bottom:8px">开始新游戏</button>
+      <button class="btn-old" style="display:block;width:100%;background:rgba(255,255,255,0.1);color:#e2e8f0">继续游戏</button>
+    </div>
+  </div>
+  <div class="col">
+    <label>新版 — 漫画按钮 (按压阴影动画)</label>
+    <div class="paper">
+      <div class="card-manga">
+        <button class="btn-manga" style="display:block;width:100%;margin-bottom:8px">开始新游戏</button>
+        <button class="btn-manga" style="display:block;width:100%;background:#f5f0e8;color:#1a1a1a">继续游戏</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<br><br>
+</body>
+</html>

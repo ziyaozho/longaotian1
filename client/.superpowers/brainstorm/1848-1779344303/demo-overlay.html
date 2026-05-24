@@ -1,0 +1,117 @@
+<h2>演示辅助 UI 叠加层</h2>
+<p class="subtitle">评委看不到，只有演示者能看到的辅助信息。按 H 键切换显示/隐藏。</p>
+
+<div class="section">
+  <h3>叠加层布局</h3>
+  <div class="mockup">
+    <div class="mockup-header">DemoOverlay 组件 — 覆盖在游戏画面上方的半透明层</div>
+    <div class="mockup-body">
+      <div style="position:relative; background:oklch(16% 0.01 250); border-radius:8px; padding:0; min-height:400px; overflow:hidden;">
+        <!-- 游戏内容（模拟） -->
+        <div style="padding: 40px 60px; min-height:300px;">
+          <p style="color:oklch(85% 0.02 250); font-size:16px; line-height:1.8;">天元大陆，灵气充沛，万物有灵。</p>
+          <p style="color:oklch(75% 0.02 250); font-size:16px; line-height:1.8;">你站在青云宗的山门前，云雾缭绕中隐约可见九座山峰...</p>
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:20px;">
+            <div style="background:oklch(25% 0.02 250); padding:10px 16px; border-radius:6px; color:oklch(85% 0.02 250); font-size:14px;">A. 踏入青云宗，拜入山门</div>
+            <div style="background:oklch(25% 0.02 250); padding:10px 16px; border-radius:6px; color:oklch(85% 0.02 250); font-size:14px;">B. 先在附近小镇打听消息</div>
+            <div style="background:oklch(25% 0.02 250); padding:10px 16px; border-radius:6px; color:oklch(85% 0.02 250); font-size:14px;">C. 独自在山中修炼，突破后再入门</div>
+            <div style="background:oklch(25% 0.02 250); padding:10px 16px; border-radius:6px; color:oklch(85% 0.02 250); font-size:14px;">D. 前往妖兽森林历练</div>
+          </div>
+        </div>
+        <!-- 叠加层 -->
+        <div style="position:absolute; top:0; left:0; right:0; bottom:0; pointer-events:none;">
+          <!-- 顶部状态栏 -->
+          <div style="background:oklch(0% 0 0 / 0.7); padding:6px 16px; display:flex; justify-content:space-between; align-items:center; font-size:12px; color:oklch(90% 0.02 100);">
+            <span>⏱ 阶段: 第一回合 | 已用 0:48 | 剩余 2:12</span>
+            <span style="color:oklch(75% 0.18 60);">🎯 当前亮点: AI实时生成</span>
+          </div>
+          <!-- 底部旁白提示 -->
+          <div style="position:absolute; bottom:12px; left:12px; right:12px; background:oklch(55% 0.18 250 / 0.85); padding:10px 16px; border-radius:8px; font-size:13px; color:#fff;">
+            💬 旁白: "注意看，这些选项不是预设的——每一个都是AI根据你的角色属性、当前世界状态、和之前的剧情进度实时计算生成的"
+          </div>
+          <!-- 右下角快捷键 -->
+          <div style="position:absolute; bottom:12px; right:12px; font-size:11px; color:oklch(70% 0.01 100 / 0.6);">
+            H 隐藏叠加层 | N 跳过当前阶段 | P 暂停
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>旁白提示系统</h3>
+  <div class="mockup">
+    <div class="mockup-header">每个阶段预设 2-3 条旁白文案，随时间线自动切换</div>
+    <div class="mockup-body">
+      <table style="width:100%; font-size:13px; border-collapse:collapse;">
+        <tr style="background:oklch(95% 0.01 250);">
+          <th style="padding:8px; text-align:left;">阶段</th>
+          <th style="padding:8px; text-align:left;">旁白 1（技术向）</th>
+          <th style="padding:8px; text-align:left;">旁白 2（体验向）</th>
+        </tr>
+        <tr>
+          <td style="padding:8px;">开局</td>
+          <td style="padding:8px; font-size:12px;">"整个角色属性系统完全由AI驱动，每一个数值都会影响后续生成的内容方向"</td>
+          <td style="padding:8px; font-size:12px;">"我们设计了8个独立的世界，每个世界都有完整的叙事弧线和世界观设定"</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;">回合1</td>
+          <td style="padding:8px; font-size:12px;">"系统将角色状态、世界设定、历史选择打包成结构化提示词发送给DeepSeek"</td>
+          <td style="padding:8px; font-size:12px;">"AI会根据你的属性和之前的选择动态生成场景——每次玩都不一样"</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;">回合2</td>
+          <td style="padding:8px; font-size:12px;">"我们实现了分层容错：API 超时自动降级到本地模板引擎，保证体验不中断"</td>
+          <td style="padding:8px; font-size:12px;">"系统人格有4个进化阶段——它正从一个冷冰冰的程序变成你的伙伴"</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;">高潮</td>
+          <td style="padding:8px; font-size:12px;">"叙事系统包含8个世界×4幕×多个故事节点，总共超过200个手写叙事节点"</td>
+          <td style="padding:8px; font-size:12px;">"这个选择不是预设的——你会真实地影响后续世界的剧情走向"</td>
+        </tr>
+        <tr>
+          <td style="padding:8px;">收尾</td>
+          <td style="padding:8px; font-size:12px;">"完整项目已生产构建就绪，支持离线模板回退，适配移动端"</td>
+          <td style="padding:8px; font-size:12px;">"这只是一个世界的冒险——完整游戏有8个世界、10个系统等待探索"</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>演示者控制</h3>
+  <div class="cards">
+    <div class="card">
+      <div class="card-body">
+        <h3>⌨️ 快捷键</h3>
+        <div style="font-size:13px;">
+          <p><b>H</b> — 切换叠加层显示/隐藏</p>
+          <p><b>N</b> — 跳到下一个演示阶段</p>
+          <p><b>P</b> — 暂停/恢复自动推进</p>
+          <p><b>R</b> — 重置演示（回到开头）</p>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>📱 第二屏（可选）</h3>
+        <p>手机上打开控制面板 URL，实时查看：<br>
+        - 当前阶段 + 剩余时间<br>
+        - 下一段旁白文案预览<br>
+        - AI 调用状态 / 缓存命中率<br>
+        - 一键跳过/skip 按钮</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-body">
+        <h3>🔴 直播模式</h3>
+        <p>检测到投屏/录屏时自动开启：<br>
+        - 叠加层默认隐藏<br>
+        - 顶部保留精简进度条<br>
+        - 所有文字自动放大</p>
+      </div>
+    </div>
+  </div>
+</div>
