@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { Player, Attributes, Stats, NpcStatus } from '../../types';
-import type { MemoryState, EndingPrototype, StoryWeaverOutput, NarrativeContext } from '../types';
+import type { MemoryState, EndingPrototype, StoryWeaverOutput } from '../types';
 
 import {
   createMemoryState, addEvent, needsCompression,
@@ -66,7 +66,7 @@ function makePlayer(overrides?: Partial<Player>): Player {
       { round: 1, age: 16, description: '觉醒灵根，踏入修炼之路。', type: 'scene' },
       { round: 2, age: 17, description: '在妖兽森林外围遭遇低阶妖兽，成功击杀。', type: 'combat' },
       { round: 3, age: 18, description: '拜入青云宗外门，开始正式修炼。', type: 'scene' },
-      { round: 4, age: 19, description: '外门大比中获得第三名，晋升内门弟子。', type: 'story' },
+      { round: 4, age: 19, description: '外门大比中获得第三名，晋升内门弟子。', type: 'scene' },
     ],
     talents: [],
     npcStatuses: {},

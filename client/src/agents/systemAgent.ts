@@ -198,7 +198,7 @@ export function processDailyCheckIn(player: Player, history: SystemHistory): Che
 
 function generateCheckInRewards(
   quality: CheckInQuality,
-  streak: number,
+  _streak: number,
   player: Player,
   history: SystemHistory,
 ): SystemReward[] {
@@ -266,7 +266,7 @@ function pickNextArtifact(player: Player, history: SystemHistory): Artifact | nu
   return null;
 }
 
-function generateEpicItem(player: Player): Item | null {
+function generateEpicItem(_player: Player): Item | null {
   const epicItems: Item[] = [
     { id: 'spirit_pill', name: '聚灵丹', description: '短时间内大幅提升灵力恢复速度', rarity: 'epic', type: 'consumable', effect: { mp: 50 } },
     { id: 'body_refine_pill', name: '锻体丹', description: '强化肉身，永久提升体质', rarity: 'epic', type: 'consumable', effect: { physique: 1, maxHp: 30 } },
@@ -279,7 +279,7 @@ function generateEpicItem(player: Player): Item | null {
   return epicItems[randomInt(0, epicItems.length - 1)] || null;
 }
 
-function pickAttributeBoost(player: Player): Partial<Attributes> {
+function pickAttributeBoost(_player: Player): Partial<Attributes> {
   const attrs: (keyof Attributes)[] = ['talent', 'intelligence', 'physique', 'appearance', 'family', 'luck'];
   const shuffled = [...attrs].sort(() => Math.random() - 0.5);
   const boost: Partial<Attributes> = {};
@@ -324,7 +324,7 @@ const BROKEN_STREAK_DIALOGUES = [
 function generateCheckInDialogue(
   player: Player,
   quality: CheckInQuality,
-  streak: number,
+  _streak: number,
   rewards: SystemReward[],
   streakBroken: boolean,
 ): string {
@@ -351,7 +351,7 @@ function generateCheckInDialogue(
   return base;
 }
 
-function buildStoryHook(quality: CheckInQuality, rewards: SystemReward[]): string | undefined {
+function buildStoryHook(_quality: CheckInQuality, rewards: SystemReward[]): string | undefined {
   const artifactReward = rewards.find((r) => r.type === 'artifact');
   if (artifactReward && artifactReward.artifact) {
     const a = artifactReward.artifact;

@@ -92,7 +92,7 @@ function randomPick<T>(arr: T[]): T {
 
 export function generateEndingPrototype(
   attributes: Attributes,
-  world: SceneType,
+  _world: SceneType,
 ): EndingPrototype {
   const archetype = pickArchetype(attributes);
   const pool = ARCHETYPE_POOLS[archetype];

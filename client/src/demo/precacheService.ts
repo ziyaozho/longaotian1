@@ -11,7 +11,7 @@ let cache: PrecacheEntry | null = null;
 export async function loadPrecache(): Promise<PrecacheEntry> {
   if (cache) return cache;
   const mod = await import('./precache/demo_v1.json');
-  cache = mod.default as PrecacheEntry;
+  cache = mod.default as unknown as PrecacheEntry;
   return cache;
 }
 

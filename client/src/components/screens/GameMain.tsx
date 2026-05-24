@@ -414,7 +414,7 @@ export default function GameMain() {
       }
 
       if (player) {
-        const featureName = getFeatureDisplayName(feature);
+        void getFeatureDisplayName(feature);
         /* 签到相关不加入重要事件 */
         if (feature === 'daily_reward' || feature === 'basic_feature' || feature === 'crit_bonus') {
           /* skip — 签到不入重要事件 */
@@ -678,6 +678,7 @@ export default function GameMain() {
         wealthChange: 0,
         fameChange: 0,
         systemExpGain: 0,
+        goldChange: 0,
       },
       usedFallback: false,
       combatResult: null,

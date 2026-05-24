@@ -11,7 +11,7 @@ interface MangaPanelProps {
 
 export default function MangaPanel({
   children,
-  screentone,
+  screentone: _screentone,
   className = '',
   animate = true,
   shake = false,

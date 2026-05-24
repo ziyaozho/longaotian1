@@ -1,4 +1,4 @@
-import type { Player, GameEvent, Choice, Task, CombatResult, Item, Talent, SceneType, NpcInteraction } from '../types';
+import type { Player, GameEvent, Choice, Task, CombatResult, Item, Talent, NpcInteraction } from '../types';
 import type { AgentContext, MemoryState, EndingPrototype, WorldShiftSignal, StoryWeaverOutput } from './types';
 import { generateTask } from './contentGenerator';
 import { checkAllAchievements } from './achievementAgent';
@@ -689,6 +689,7 @@ export const processChoice = (player: Player, choiceId: string, event: GameEvent
       effects: {
         hpChange: 0, mpChange: 0, expGain: Math.floor(player.stats.level * 5),
         wealthChange: 0, fameChange: 0, systemExpGain: Math.floor(player.stats.level * 2),
+        goldChange: 0,
       },
       storyFlags: [`milestone_triggered_${player.progress.sceneLevel}`],
       combatResult: null,
@@ -704,7 +705,7 @@ export const processChoice = (player: Player, choiceId: string, event: GameEvent
         hpChange: Math.floor(player.stats.maxHp * 0.2),
         mpChange: Math.floor(player.stats.maxMp * 0.2),
         expGain: Math.floor(player.stats.level * 3),
-        wealthChange: 0, fameChange: 0, systemExpGain: 0,
+        wealthChange: 0, fameChange: 0, systemExpGain: 0, goldChange: 0,
       },
       storyFlags: [`milestone_triggered_${player.progress.sceneLevel}`],
       combatResult: null,
@@ -916,6 +917,7 @@ export const processChoice = (player: Player, choiceId: string, event: GameEvent
     wealthChange: (typeEffect.effects.wealthChange ?? baseEffects.wealthChange),
     fameChange: (typeEffect.effects.fameChange ?? baseEffects.fameChange),
     systemExpGain: baseEffects.systemExpGain,
+    goldChange: 0,
   };
 
   // 处理天赋奖励

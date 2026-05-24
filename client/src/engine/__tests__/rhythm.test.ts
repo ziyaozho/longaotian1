@@ -1,13 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { createRhythmController } from '../rhythm';
+import type { Player } from '../../types';
 
-const mockPlayer = (level = 1, luck = 5) => ({
-  stats: { level, combatPower: 100, exp: 0, hp: 100, maxHp: 100, mp: 50, maxMp: 50, wealth: 0, fame: 0 },
+const mockPlayer = (level = 1, luck = 5): Player => ({
+  stats: { level, combatPower: 100, exp: 0, hp: 100, maxHp: 100, mp: 50, maxMp: 50, wealth: 0, fame: 0, gold: 0 },
   progress: { round: 1, sceneType: 'modern_city' as const, sceneLevel: 1, age: 20, storyFlags: [] },
   attributes: { luck, talent: 5, appearance: 5, intelligence: 5, physique: 5, family: 5 },
   id: 'test', name: 'test', createdAt: 0,
   system: { id: 'sys', name: 'test', level: 1, exp: 0, features: [] },
   inventory: [], equipment: {}, skills: [], activeTasks: [], completedTasks: [], achievements: [], history: [], talents: [],
+  npcStatuses: {}, artifacts: [],
+  systemHistory: { checkInStreak: 0, lastCheckInRound: 0, lastRewardItemIds: [], totalGoldIssued: 0, artifactIssueHistory: [] },
 });
 
 describe('RhythmController', () => {

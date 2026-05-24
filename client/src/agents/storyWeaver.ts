@@ -1,4 +1,4 @@
-import type { Player, Choice, Attributes } from '../types';
+import type { Player } from '../types';
 import type { NarrativeContext, StoryWeaverOutput, EconomicState, ArtifactUsageHint } from './types';
 import { getSceneById } from '../data/scenes';
 import { summarizeHistory } from '../ai/contextManager';

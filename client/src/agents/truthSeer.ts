@@ -143,7 +143,7 @@ function checkEndingConditions(
         const npc = player.npcStatuses[npcId];
         for (const kw of deathKeywords) {
           if (npc.affection >= 60 && combinedText.includes(npc.name) && combinedText.includes(kw)) {
-            warnings.push(`关键NPC「${npc.name}」可能死亡，会影响结局条件「${cond.description}」`);
+            errors.push(`关键NPC「${npc.name}」可能死亡，会影响结局条件「${cond.description}」`);
           }
         }
       }

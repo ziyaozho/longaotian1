@@ -20,6 +20,7 @@ export const DEMO_PLAYER: Partial<Player> = {
     combatPower: 15,
     wealth: 500,
     fame: 10,
+    gold: 0,
   },
 };
 

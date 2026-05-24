@@ -1,5 +1,4 @@
-import { generateSpritesheetCanvas } from './canvasRenderer';
-import type { CharacterAppearance } from '../components/character';
+// image generation utilities (imports removed, unused)
 
 const API_URL = 'https://api.siliconflow.cn/v1/images/generations';
 

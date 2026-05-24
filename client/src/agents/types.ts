@@ -1,4 +1,5 @@
 import type { Player, Choice, SceneType, Attributes, NpcInteraction, NpcStatus, WorldShiftSignal, Item, Artifact } from '../types';
+export type { WorldShiftSignal };
 
 export interface AgentContext {
   player: Player;

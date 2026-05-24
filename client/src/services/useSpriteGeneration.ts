@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { CharacterAppearance } from '../components/character';
 import { generateSpritesheetCanvas } from './canvasRenderer';
 import { generateImage, buildSpritesheetPrompt } from './imageGeneration';

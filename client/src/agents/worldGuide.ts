@@ -129,7 +129,7 @@ function calcFitness(attributes: Attributes, profile: WorldProfile): number {
   return Math.max(0, score);
 }
 
-function getTopAttribute(attributes: Attributes): string {
+function getTopAttribute(attributes: Attributes): keyof Attributes {
   const entries = Object.entries(attributes) as [keyof Attributes, number][];
   entries.sort((a, b) => b[1] - a[1]);
   return entries[0]?.[0] || 'talent';

@@ -104,7 +104,6 @@ export function compressMemory(
 
   const keepCount = 2;
   const toCompress = events.slice(0, events.length - keepCount);
-  const kept = events.slice(-keepCount);
 
   const descriptions = toCompress.map((e) => e.event);
   const summaryDelta = buildSummary(descriptions);

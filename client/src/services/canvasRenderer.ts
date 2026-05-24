@@ -394,6 +394,7 @@ function drawEyebrows(
   p: RenderParams,
   expr: ExpressionDef,
 ): void {
+  void p;
   const browW = 16;
   const spacing = 22;
   const angle = expr.browAngle;
@@ -434,6 +435,7 @@ function drawMouth(
   p: RenderParams,
   expr: ExpressionDef,
 ): void {
+  void p;
   ctx.save();
   ctx.translate(x, y);
 
@@ -517,7 +519,7 @@ function drawMouth(
   ctx.restore();
 }
 
-function drawBody(ctx: CanvasRenderingContext2D, x: number, y: number, p: RenderParams): void {
+function drawBody(ctx: CanvasRenderingContext2D, _x: number, _y: number, p: RenderParams): void {
   const w = 45 * p.bodyWidth;
   const h = 55;
 

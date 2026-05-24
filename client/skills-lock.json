@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "claude-to-deerflow": {
+      "source": "bytedance/deer-flow",
+      "sourceType": "github",
+      "skillPath": "skills/public/claude-to-deerflow/SKILL.md",
+      "computedHash": "d32e99ba4bc878ccc0d67ecaeae0cb0fdaaf33e8b86a966b322effaf26588b5d"
+    }
+  }
+}
